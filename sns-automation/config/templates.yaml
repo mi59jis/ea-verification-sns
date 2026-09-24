@@ -1,0 +1,86 @@
+# 投稿テンプレート集(「EA検証ラボ SNS発信・SEO運用ガイド」のテンプレをそのまま変数化したもの)
+#
+# {title}        記事タイトル(例: EA検証ラボ #1)
+# {note_url}     noteの記事URL
+# {pf}           今回のPF(点推定)
+# {pf_low}/{pf_high}  PFのブレ幅
+# {dd}           最大DD(点推定, %)
+# {dd_low}/{dd_high}  最大DDのブレ幅
+# {trades}       取引数
+# {win_count}    その記事内でPF>=1だった本数
+# {total_count}  その記事の検証本数(通常10)
+# {hashtags}     ハッシュタグ文字列(スペース区切り)
+#
+# 実際の値は config/posts_queue.csv の該当行から埋め込みます。
+
+hashtags_core: "#EA検証 #FX自動売買 #MT5"
+hashtags_extra: "#自動売買システム #バックテスト"
+
+x:
+  new_article: |
+    【EA検証 {report_no}】
+    無料公開中のEAを{total_count}本、実際にバックテストしてみた。
+
+    ✅ 黒字は{total_count}本中{win_count}本だけ
+    📉 最大ドローダウン100%のものも掲載
+    💰 PF・取引数・最終資産を全部公開
+
+    結果はこちら👇
+    {note_url}
+
+    {hashtags_core}
+
+  hook_single: |
+    【実際の数字】
+    あるEAの検証結果:
+    PF {pf}(ブレ幅 {pf_low}〜{pf_high})
+    最大DD {dd}%(ブレ幅 {dd_low}〜{dd_high}%)
+    取引数 {trades}回
+
+    作者の公表成績: なし
+    →公開情報だけでは判断できないことが分かります。
+
+    全{total_count}本の検証結果は note で順次公開中👇
+    {note_url}
+
+  warning: |
+    「勝率90%」と宣伝されていたEA、実際に回してみたら…
+
+    最大DDが口座残高を超えていました。
+    (実戦なら早々にロスカットされていた水準です)
+
+    実際のデータを見ずにEAを選ぶのは危ない、という一例でした。
+    詳細はnoteへ👇
+    {note_url}
+
+threads:
+  new_article: |
+    【EA検証 {report_no}】
+    無料公開中のEAを{total_count}本、実際にバックテストしてみた。
+
+    ✅ 黒字は{total_count}本中{win_count}本だけ
+    📉 最大ドローダウン100%のものも掲載
+    💰 PF・取引数・最終資産を全部公開
+
+    結果はこちら👇
+    {note_url}
+
+    {hashtags_core}
+
+instagram:
+  carousel: |
+    🔍無料EAをガチ検証 {report_no}
+
+    実際に動かした結果を、良いも悪いも全部公開していくシリーズです。
+    プロフィールリンクから最新記事へ。
+    {hashtags_core} {hashtags_extra}
+
+  new_article: |
+    【EA検証 {report_no}】無料公開中のEAを{total_count}本、実際にバックテストしてみた。
+
+    ✅黒字は{total_count}本中{win_count}本だけ
+    📉最大ドローダウン100%のものも掲載
+    💰PF・取引数・最終資産を全部公開
+
+    続きはプロフィールのリンクから📎
+    {hashtags_core} {hashtags_extra}
