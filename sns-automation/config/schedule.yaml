@@ -1,0 +1,50 @@
+# EA検証ラボ SNS自動投稿スケジュール
+# 曜日・時間はすべて JST(日本時間)。post_scheduler.py がこれを見て
+# 「今、投稿すべきスロットかどうか」を判定します。
+# GitHub Actions 側の cron は UTC 表記になるので workflow ファイルとは
+# 9時間ズレていますが、実際の判定はこのファイルの JST 基準で行われます。
+#
+# note記事の公開は「毎日」ではなく、月曜・木曜の20時頃に1本ずつ。
+# それに合わせて、SNSの投稿も月・木を「新記事告知」の軸にし、
+# 間の火・水・金でその記事の内容を小出しにする構成にしています。
+
+timezone: "Asia/Tokyo"
+
+slots:
+  - id: mon_launch
+    weekday: mon           # mon/tue/wed/thu/fri/sat/sun
+    time: "20:00"
+    platform: [x, instagram, threads]   # 3つ同時
+    template: new_article
+    note: "月曜公開の新記事の告知(週の1本目)"
+
+  - id: tue_hook
+    weekday: tue
+    time: "12:00"
+    platform: x
+    template: hook_single
+    note: "月曜記事の数字を1つ抜き出して投稿"
+
+  - id: wed_carousel
+    weekday: wed
+    time: "19:00"
+    platform: instagram
+    template: carousel
+    note: "月曜記事のビフォー/アフター画像+まとめ表をカルーセルで"
+
+  - id: thu_launch
+    weekday: thu
+    time: "20:00"
+    platform: [x, instagram, threads]   # 3つ同時
+    template: new_article
+    note: "木曜公開の新記事の告知(週の2本目)"
+
+  - id: fri_warning
+    weekday: fri
+    time: "21:00"
+    platform: x
+    template: warning
+    note: "悪い結果の事例(匿名)を紹介し危機感を作る(木曜記事の内容を使用)"
+
+# 投稿しない曜日(土・日)は、この最小構成では自動化の対象外です。
+# 進捗共有・来週予告など定型文になりにくい投稿は、当面は手動を推奨します。
