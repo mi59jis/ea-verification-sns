@@ -1,0 +1,59 @@
+name: SNS auto post (EA検証ラボ)
+
+on:
+  schedule:
+    # すべて UTC 表記(JSTの-9時間)。config/schedule.yaml の JST 時刻と対応。
+    # note記事は月・木の20時頃に1本ずつ公開する前提のスケジュール。
+    - cron: "0 11 * * 1"  # 月 20:00 JST → X + Instagram 新記事告知(1本目)
+    - cron: "0 3 * * 2"   # 火 12:00 JST → X フック投稿
+    - cron: "0 10 * * 3"  # 水 19:00 JST → Instagram カルーセル
+    - cron: "0 11 * * 4"  # 木 20:00 JST → X + Instagram 新記事告知(2本目)
+    - cron: "0 12 * * 5"  # 金 21:00 JST → X 警鐘投稿
+  workflow_dispatch:      # 手動実行・DRY_RUNでのテスト用
+    inputs:
+      dry_run:
+        description: "true にすると投稿せず内容だけ表示します"
+        required: false
+        default: "false"
+
+permissions:
+  contents: write   # posts_queue.csv の posted フラグをコミットし直すため
+
+jobs:
+  post:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: |
+          pip install -r sns-automation/requirements.txt
+          python -m playwright install --with-deps chromium
+
+      - name: Restore X session (storage_state)
+        run: |
+          echo "${{ secrets.X_STORAGE_STATE_B64 }}" | base64 -d > sns-automation/x_storage_state.json
+
+      - name: Run scheduler
+        env:
+          DRY_RUN: ${{ github.event.inputs.dry_run || 'false' }}
+          IG_ACCESS_TOKEN: ${{ secrets.IG_ACCESS_TOKEN }}
+          IG_BUSINESS_ACCOUNT_ID: ${{ secrets.IG_BUSINESS_ACCOUNT_ID }}
+          IMAGE_PUBLIC_BASE_URL: ${{ secrets.IMAGE_PUBLIC_BASE_URL }}
+          THREADS_ACCESS_TOKEN: ${{ secrets.THREADS_ACCESS_TOKEN }}
+          THREADS_USER_ID: ${{ secrets.THREADS_USER_ID }}
+        run: |
+          cd sns-automation
+          python scripts/post_scheduler.py
+
+      - name: Commit updated queue (posted flags)
+        run: |
+          git config user.name "sns-auto-bot"
+          git config user.email "actions@users.noreply.github.com"
+          git add sns-automation/config/posts_queue.csv
+          git diff --cached --quiet || git commit -m "chore: update posts_queue.csv (posted flags)"
+          git push
