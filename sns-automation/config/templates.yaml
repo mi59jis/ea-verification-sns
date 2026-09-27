@@ -13,8 +13,8 @@
 #
 # 実際の値は config/posts_queue.csv の該当行から埋め込みます。
 
-hashtags_core: "#EA検証 #FX自動売買 #MT5"
-hashtags_extra: "#自動売買システム #バックテスト"
+hashtags_core: "#EA検証 #FX自動売買 #自動売買 #投資 #MT5"
+hashtags_extra: "#バックテスト #システムトレード #資産運用 #為替 #FX"
 
 x:
   new_article: |
@@ -43,6 +43,8 @@ x:
     全{total_count}本の検証結果は note で順次公開中👇
     {note_url}
 
+    {hashtags_core}
+
   warning: |
     「勝率90%」と宣伝されていたEA、実際に回してみたら…
 
@@ -52,6 +54,8 @@ x:
     実際のデータを見ずにEAを選ぶのは危ない、という一例でした。
     詳細はnoteへ👇
     {note_url}
+
+    {hashtags_core}
 
 threads:
   new_article: |
