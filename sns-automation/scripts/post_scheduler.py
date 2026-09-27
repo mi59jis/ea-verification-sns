@@ -11,7 +11,15 @@ GitHub Actions から cron で呼び出される想定のエントリーポイ�
 
 実行タイミングは GitHub Actions 側の cron で決めるので、このスクリプト自体は
 「今の時刻に一致するスロットが1つもなければ何もせず終了する」だけのシンプルな
-作りにしてあります。多少の実行タイミングのズレ(±15分程度)は許容します。
+作りにしてあります。
+
+注意(2026-09-28 修正): GitHub Actionsのスケジュール実行は、cronを
+「毎時ちょうど(0分)」に設定していると、他の大量のリポジトリと重なって
+数時間規模で遅延することがあります。遅延で日付が変わってしまうと、
+「今日の曜日」だけで判定する単純なロジックでは対象スロットを
+見失ってしまうため、各スロットについて「直近の該当曜日・時刻」からの
+経過時間を計算する方式に変更し、許容幅(TOLERANCE_MINUTES)も
+数時間規模の遅延を吸収できるよう広げています。
 """
 
 import csv
@@ -28,9 +36,12 @@ QUEUE_PATH = os.path.join(BASE_DIR, "config", "posts_queue.csv")
 
 WEEKDAY_MAP = {"mon": 0, "tue": 1, "wed": 2, "thu": 3, "fri": 4, "sat": 5, "sun": 6}
 
-# cron の実行ズレを吸収する許容幅(分)。GitHub Actions の cron は数分〜十数分
-# 遅れて発火することがあるため、前後15分は「そのスロット」とみなす。
-TOLERANCE_MINUTES = 20
+# cron の実行ズレを吸収する許容幅(分)。GitHub Actionsのスケジュール実行は
+# 「毎時ちょうど」だと混雑して数時間規模で遅延することがあるため、
+# 半日以内の遅延なら拾えるよう6時間(360分)に設定している。
+# (スロット同士は最短でも16時間以上離れているため、誤って別のスロットと
+# 重複マッチする心配はない)
+TOLERANCE_MINUTES = 360
 
 
 def now_jst() -> datetime.datetime:
@@ -44,16 +55,26 @@ def load_yaml(path):
 
 
 def find_active_slot(schedule, now):
-    today_idx = now.weekday()
+    # 各スロットについて「直近の該当曜日・時刻(今より前で最も近いもの)」を求め、
+    # そこからの経過時間が許容幅以内なら対象とする。GitHub Actions側の
+    # スケジュール遅延で日付が変わっても正しく拾えるようにするための方式。
+    best_slot = None
+    best_diff = None
     for slot in schedule["slots"]:
-        if WEEKDAY_MAP[slot["weekday"]] != today_idx:
-            continue
+        target_weekday = WEEKDAY_MAP[slot["weekday"]]
         hh, mm = map(int, slot["time"].split(":"))
-        slot_dt = now.replace(hour=hh, minute=mm, second=0, microsecond=0)
-        diff_minutes = abs((now - slot_dt).total_seconds()) / 60
+        days_since = (now.weekday() - target_weekday) % 7
+        candidate = (now - datetime.timedelta(days=days_since)).replace(
+            hour=hh, minute=mm, second=0, microsecond=0
+        )
+        if candidate > now:
+            candidate -= datetime.timedelta(days=7)
+        diff_minutes = (now - candidate).total_seconds() / 60
         if diff_minutes <= TOLERANCE_MINUTES:
-            return slot
-    return None
+            if best_diff is None or diff_minutes < best_diff:
+                best_diff = diff_minutes
+                best_slot = slot
+    return best_slot
 
 
 def load_queue_row(slot_id):
