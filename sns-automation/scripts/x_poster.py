@@ -202,11 +202,39 @@ X(旧Twitter)への投稿を、公式APIを使わずブラウザ操作(Playwrigh
   文字入力中(type()の最中)はEscapeを送らないため、ハッシュタグの後に
   改行やスペースが続いても、ドロップダウンの候補選択として誤解釈
   される心配もない。
+
+2026-09-28 修正(12回目・真の根本原因を特定: 本文がXの文字数上限を
+超えていた):
+- 11回目の修正(type()への切り替え)を投入した後も、まったく同じ症状
+  (「[試行1] 投稿欄に反映された文字数: 248 (元の文字数: 240)」で本文は
+  正しく反映されているのに、投稿ボタンが aria-disabled="true" のまま
+  タイムアウトする)が再発した。insert_text() でも type()(本物のキー
+  イベント)でも同じ結果になったことから、原因は入力方式ではなく、
+  そもそもXが「本文が長すぎる」と判定して投稿ボタンを有効化して
+  いなかった可能性が高いと判断した。
+- 実際の投稿予定本文(mon_launchスロット)をログから復元し、Xの文字数
+  カウント方式(絵文字・全角/漢字・かな等の東アジア文字幅がWide/
+  Fullwidthの文字は2文字分としてカウントし、URLはリンクの実際の長さに
+  関わらず23文字固定でカウントする、という公開されている仕様)で
+  概算したところ、約303文字となり、Xの投稿上限280文字を大きく超えて
+  いることが判明した。Python側の len(text) は240文字であり、この
+  「見た目の文字数」と「Xの実際のカウント」の差(絵文字・全角文字は
+  2倍カウントされる)に気づいていなかったため、これまでの10回の修正は
+  すべて「投稿欄・投稿ボタンの見つけ方」や「入力方式」という誤った
+  方向を調査していたことになる。
+- 対策として、post_to_x() の冒頭で本文のX基準の文字数(絵文字・全角=2、
+  URL=23換算)を計算し、280文字を超える場合は自動的に短縮するように
+  した。まず本文末尾の「🌍 English / overseas version」以降の海外向け
+  補足セクションを削り、それでも超える場合は本文の末尾を削って「…」を
+  付与する。これにより、今後同様に長い本文が来た場合でも、投稿ボタンが
+  永久にdisabledのままになる事態を未然に防ぐ。
 """
 
 import os
+import re
 import sys
 import time
+import unicodedata
 
 from playwright.sync_api import sync_playwright
 
@@ -253,7 +281,66 @@ def _dump_diagnostics(page, label: str) -> None:
     print(f"=== 診断情報終了: {label} ===")
 
 
+_X_CHAR_LIMIT = 280
+
+
+def _x_weighted_length(s: str) -> int:
+    """Xの文字数カウント方式を概算する。
+    URL(http/https)は実際の長さに関わらず23文字固定、絵文字や全角/漢字/
+    かな等のWide・Fullwidth文字は2文字分としてカウントする(12回目の
+    修正で判明した、Xの投稿ボタンが有効化されない真の原因への対策)。
+    """
+    urls = re.findall(r"https?://\S+", s)
+    stripped = s
+    for u in urls:
+        stripped = stripped.replace(u, "")
+    total = 0
+    for ch in stripped:
+        ea = unicodedata.east_asian_width(ch)
+        total += 2 if ea in ("W", "F") else 1
+    total += len(urls) * 23
+    return total
+
+
+def _shrink_text_for_x(text: str, limit: int = _X_CHAR_LIMIT) -> str:
+    """Xの文字数上限を超えている場合に本文を短縮する。"""
+    if _x_weighted_length(text) <= limit:
+        return text
+    # まず「🌍 English / overseas version」以降の海外向け補足を削る
+    marker = "🌍"
+    if marker in text:
+        shrunk = text[: text.index(marker)].rstrip()
+        if _x_weighted_length(shrunk) <= limit:
+            return shrunk
+        text = shrunk
+    # それでも超える場合は末尾から削って "…" を付与する
+    while text and _x_weighted_length(text + "…") > limit:
+        text = text[:-1].rstrip()
+    return (text + "…") if text else text
+
+
 def post_to_x(text: str) -> None:
+    # 12回目の修正: Xの文字数カウント(絵文字・全角=2、URL=23換算)で
+    # 上限280文字を超えている場合、投稿ボタンが永久にdisabledのまま
+    # になる(見た目上は本文が正しく入力欄に反映されていても送信できない)
+    # ことが判明したため、投稿処理に入る前に必ずチェックし、必要なら
+    # 短縮する。
+    weighted_len = _x_weighted_length(text)
+    print(
+        f"本文のX文字数換算(絵文字・全角=2、URL=23換算): {weighted_len} "
+        f"/ 上限{_X_CHAR_LIMIT} (Pythonのlen()では{len(text)}文字)"
+    )
+    if weighted_len > _X_CHAR_LIMIT:
+        shrunk = _shrink_text_for_x(text, _X_CHAR_LIMIT)
+        print(
+            "本文がXの文字数上限を超えていたため短縮しました。"
+            f"(短縮後のX文字数換算: {_x_weighted_length(shrunk)})"
+        )
+        print("--- 短縮後の本文 ---")
+        print(shrunk)
+        print("--------------------")
+        text = shrunk
+
     if not os.path.exists(STORAGE_STATE_PATH):
         raise RuntimeError(
             f"{STORAGE_STATE_PATH} が見つかりません。"
