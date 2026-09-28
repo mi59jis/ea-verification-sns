@@ -11,13 +11,18 @@ GitHub Actions では実行しません。CIに組み込まないでください
    あればそれも含めて、すべて自分で入力する。このスクリプトはログイン
    処理には一切関与しない)
 3. ログインできたらターミナルに戻ってEnterキーを押す
-4. ログイン済みのセッション情報(Cookie等)を note_storage_state.json に保存する
+4. (自動)note.comの編集画面(editor.note.com)にも一度アクセスして、
+   そちらのセッションも確実に確立させる
+   (note.com本体とeditor.note.comはサブドメインが異なるため、
+   note.com/loginだけではeditor.note.com側のセッションが
+   確立されないことがあるための対策)
+5. ログイン済みのセッション情報(Cookie等)を note_storage_state.json に保存する
 
 保存されたファイルの中身をそのまま GitHub Secrets の
 NOTE_STORAGE_STATE_B64 に登録してください(base64化してから登録します)。
 
     # Windows PowerShell
-    [Convert]::ToBase64String([IO.File]::ReadAllBytes("note_storage_state.json")) | Set-Clipboard
+    [Convert]::ToBase64String([IO.File]::ReadAllBytes("$PWD\note_storage_state.json")) | Set-Clipboard
 
     # Mac/Linux
     base64 -i note_storage_state.json | pbcopy   # クリップボードにコピー(Mac)
@@ -51,6 +56,13 @@ def main():
         print("このターミナルに戻って Enter キーを押してください。")
         print("=" * 60)
         input()
+
+        # note.com本体とeditor.note.comはサブドメインが異なるため、
+        # editor.note.com側のセッションも明示的に確立させておく。
+        print("編集画面(editor.note.com)のセッションを確認しています...")
+        page.goto("https://editor.note.com/", timeout=30000)
+        page.wait_for_timeout(3000)
+        print(f"editor.note.com アクセス後のURL: {page.url}")
 
         context.storage_state(path=OUTPUT_PATH)
         browser.close()
