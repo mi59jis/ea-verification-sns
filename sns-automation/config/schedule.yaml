@@ -8,9 +8,11 @@
 # それに合わせて、SNSの投稿も月・木を「新記事告知」の軸にし、
 # 間の火・水・金でその記事の内容を小出しにする構成にしています。
 #
-# 追記: mon_launch / thu_launch の platform 先頭に "note" を追加しました。
-# note_poster.py による下書き公開(タグ付け・有料設定・投稿)を、他のSNS
-# 投稿より先に行うためです(posts_queue.csv の note_draft_id が対象)。
+# 注記: note記事自体の公開(下書き→タグ付け→有料設定→投稿)は、
+# note.comのbot検知(reCAPTCHA)によりPlaywright等の新規自動化ブラウザからは
+# 行えないことが判明したため、GitHub Actions側では扱わず、別のCowork
+# スケジュールタスク(ユーザーのPC上の実ブラウザ経由)で行っています。
+# ここでのSNS投稿は、その記事が公開済みであることを前提に動きます。
 
 timezone: "Asia/Tokyo"
 
@@ -18,7 +20,7 @@ slots:
   - id: mon_launch
     weekday: mon           # mon/tue/wed/thu/fri/sat/sun
     time: "20:00"
-    platform: [note, x, instagram, threads]   # note公開→3つ同時にSNS投稿
+    platform: [x, instagram, threads]   # 3つ同時
     template: new_article
     note: "月曜公開の新記事の告知(週の1本目)"
 
@@ -39,7 +41,7 @@ slots:
   - id: thu_launch
     weekday: thu
     time: "20:00"
-    platform: [note, x, instagram, threads]   # note公開→3つ同時にSNS投稿
+    platform: [x, instagram, threads]   # 3つ同時
     template: new_article
     note: "木曜公開の新記事の告知(週の2本目)"
 
