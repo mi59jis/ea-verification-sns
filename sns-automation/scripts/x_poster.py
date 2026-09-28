@@ -98,6 +98,8 @@ X(旧Twitter)への投稿を、公式APIを使わずブラウザ操作(Playwrigh
   流用している。送信後は、投稿欄(ダイアログ)が閉じたことを確認する
   ことで送信成功を判定し、閉じない場合はフォールバックとして投稿ボタン
   のクリックを試みたうえで、それでも失敗したら診断情報を出力する。
+  (9回目の修正で、この「ダイアログが閉じた=成功」という判定自体が
+  誤検知の原因だったことが判明した。)
 
 2026-09-28 修正(8回目・真の原因を特定: 不要なEscapeキーが投稿ダイアログ
 自体を閉じていた):
@@ -122,6 +124,30 @@ X(旧Twitter)への投稿を、公式APIを使わずブラウザ操作(Playwrigh
   フォーカスを取り直す必要はないため削除し、insert_text 直後の
   フォーカス状態のまま短い待機だけを挟んで Control+Enter を送信する
   ようにした。
+
+2026-09-28 修正(9回目・「投稿完了」の誤検知を修正: 実際には0件のまま
+投稿されていなかった):
+- 8回目の修正版を実行したところ、ジョブ全体は失敗(instagram/threads側の
+  問題)したが、Xの処理自体は例外を出さず「Xへの投稿が完了しました。」と
+  ログに出力されていた。ところが、ログをよく見ると
+  「投稿欄に反映された文字数: 1 (元の文字数: 240)」となっており、
+  実際には本文がほぼ入力されていなかった。それにもかかわらず
+  Control+Enter 送信後にダイアログが閉じたため、「ダイアログが閉じた
+  =投稿成功」という判定ロジックが誤って成功と判断していた。
+  実際にXアカウント(@eakensholab)を確認したところ投稿数は0件のままで
+  あり、投稿は一切行われていなかった(=誤字脱字や空投稿が公開される
+  実害はなかったが、「成功した」という誤った報告をしてしまっていた)。
+- 対策として、以下の2点を追加した。
+  1. 本文挿入後に反映文字数を確認し、想定文字数と一致しない場合は
+     投稿欄への再クリック→insert_textを最大3回までリトライする
+     (タイミングのずれで挿入が失敗するケースへの対策)。それでも
+     一致しない場合は、投稿を試みず例外を出して失敗として扱う。
+  2. Control+Enter送信後、単に「ダイアログが閉じたか」だけで成功と
+     判定するのをやめ、実際にXのホームタイムライン
+     (https://x.com/home)を開いて、投稿した本文の先頭部分が
+     タイムライン上に実際に表示されているかどうかを確認してから
+     初めて「投稿が完了しました」とログに出すようにした。この確認が
+     取れない場合は、成功と誤報告せず例外を送出する。
 """
 
 import os
@@ -222,7 +248,7 @@ def post_to_x(text: str) -> None:
 
             textbox = scope.locator('div[data-testid="tweetTextarea_0"]').first
             textbox.wait_for(state="visible", timeout=15000)
-            textbox.click()
+
             # 本文に # (ハッシュタグ) を含むため、1文字ずつ type() すると
             # Xの入力補完(オートコンプリート)ドロップダウンが途中で反応し、
             # 入力が正しく確定しないことがある。
@@ -234,14 +260,45 @@ def post_to_x(text: str) -> None:
             # 自体を閉じる操作として扱われ、「下書きを保存しますか?」の
             # 確認マスクが画面を覆ってしまう不具合の原因だったため、
             # 8回目の修正で完全に削除した。
-            page.wait_for_timeout(500)
+            #
+            # 9回目の修正: タイミングのずれにより insert_text が本文の
+            # 一部(1文字など)しか反映しないことがあったため、反映文字数を
+            # 確認し、一致しなければ再クリック→再挿入を最大3回まで試みる。
+            entered_len = 0
+            for attempt in range(1, 4):
+                textbox.click()
+                page.wait_for_timeout(200)
+                # 前回の挿入が中途半端に残っている可能性があるため、
+                # 選択→削除してから挿入し直す。
+                page.keyboard.press("Control+A")
+                page.keyboard.press("Delete")
+                page.wait_for_timeout(200)
+                page.keyboard.insert_text(text)
+                page.wait_for_timeout(500)
+                try:
+                    entered_len = textbox.evaluate("el => el.innerText.length")
+                except Exception as e:  # noqa: BLE001
+                    print(f"[試行{attempt}] 投稿欄の内容確認に失敗:", e)
+                    entered_len = 0
+                print(
+                    f"[試行{attempt}] 投稿欄に反映された文字数: {entered_len} "
+                    f"(元の文字数: {len(text)})"
+                )
+                # 改行の扱いなどで innerText.length が元の文字数と完全一致
+                # しないことがあるため、大幅に足りない(半分未満)場合のみ
+                # 失敗とみなしてリトライする。
+                if entered_len >= len(text) * 0.5:
+                    break
+                print(f"[試行{attempt}] 文字数が大幅に不足しているためリトライします。")
+            else:
+                pass
 
-            # 本文が実際に入力欄に反映されたかどうかをログに残す(次回調査用)
-            try:
-                entered_len = textbox.evaluate("el => el.innerText.length")
-                print(f"投稿欄に反映された文字数: {entered_len} (元の文字数: {len(text)})")
-            except Exception as e:  # noqa: BLE001
-                print("投稿欄の内容確認に失敗:", e)
+            if entered_len < len(text) * 0.5:
+                raise RuntimeError(
+                    f"本文の入力に失敗しました(反映文字数: {entered_len} / "
+                    f"元の文字数: {len(text)})。3回リトライしても改善しなかった"
+                    "ため、投稿を中止します。"
+                )
 
             # 認証チャレンジ・電話番号確認などが出ていないか軽くチェック
             if page.locator("text=confirm your identity").count() > 0 or page.locator(
@@ -258,7 +315,7 @@ def post_to_x(text: str) -> None:
             # だったため、再クリックが「下書き保存確認」マスクに阻まれて
             # 失敗していた。Escapeを削除した今は再クリックも不要)。
             page.keyboard.press("Control+Enter")
-            page.wait_for_timeout(2000)
+            page.wait_for_timeout(2500)
 
             # 送信が成功していれば、投稿欄(ダイアログ)が閉じているはず
             dialog_still_open = False
@@ -277,6 +334,32 @@ def post_to_x(text: str) -> None:
                 )
                 page.wait_for_timeout(500)
                 post_button.click(timeout=10000)
+                page.wait_for_timeout(2000)
+
+            # 9回目の修正: 「ダイアログが閉じた」だけでは投稿成功の証拠に
+            # ならない(実際には本文がほぼ空のまま送信され、ダイアログだけ
+            # 閉じて0件投稿だったケースが確認された)。ホームタイムラインを
+            # 開き、投稿した本文の先頭部分が実際に表示されているかどうかを
+            # 確認してから、初めて成功と判断する。
+            verify_snippet = text.strip()[:20]
+            posted_confirmed = False
+            try:
+                page.goto("https://x.com/home", timeout=20000)
+                page.wait_for_timeout(3000)
+                for _ in range(4):
+                    if page.locator(f"text={verify_snippet}").count() > 0:
+                        posted_confirmed = True
+                        break
+                    page.wait_for_timeout(1500)
+            except Exception as e:  # noqa: BLE001
+                print("投稿確認(ホームタイムライン確認)に失敗:", e)
+
+            if not posted_confirmed:
+                raise RuntimeError(
+                    "投稿完了を確認できませんでした(ホームタイムラインに"
+                    f"本文の先頭「{verify_snippet}」が見つかりません)。"
+                    "実際には投稿されていない可能性があるため、失敗として扱います。"
+                )
         except Exception:
             _dump_diagnostics(page, "投稿処理中の失敗")
             browser.close()
@@ -286,7 +369,7 @@ def post_to_x(text: str) -> None:
         time.sleep(3)
         context.storage_state(path=STORAGE_STATE_PATH)  # セッションを最新化して保存
         browser.close()
-        print("Xへの投稿が完了しました。")
+        print("Xへの投稿が完了しました。(ホームタイムラインで反映を確認済み)")
 
 
 if __name__ == "__main__":
