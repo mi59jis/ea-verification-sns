@@ -19,6 +19,9 @@ note.comの下書き記事を、公式APIを使わずブラウザ操作(Playwrig
   (有料記事のため、誤った状態での公開は取り返しがつかない)。
 - 初回利用前に、必ずテスト用の下書き(無料・捨てても良い内容)で
   一度動作確認してから、本番の記事に使うこと。
+- ローカルでの動作確認時は環境変数 NOTE_POSTER_HEADLESS=false を設定すると
+  実際にブラウザが表示され、何が起きているか目視で確認できる
+  (GitHub Actions側は表示なし環境のため、常にheadless=trueで動く)。
 """
 
 import os
@@ -29,6 +32,8 @@ STORAGE_STATE_PATH = os.environ.get(
     "NOTE_STORAGE_STATE_PATH",
     os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "note_storage_state.json"),
 )
+
+HEADLESS = os.environ.get("NOTE_POSTER_HEADLESS", "true").lower() != "false"
 
 # 全記事共通で付けるハッシュタグ(下書きに既に付いているタグは自動でスキップする)
 NOTE_HASHTAGS = [
@@ -51,16 +56,21 @@ def publish_note_draft(draft_id: str) -> str:
     edit_url = f"https://editor.note.com/notes/{draft_id}/edit/"
 
     with sync_playwright() as p:
-        browser = p.chromium.launch(headless=True)
+        browser = p.chromium.launch(headless=HEADLESS, slow_mo=200 if not HEADLESS else 0)
         context = browser.new_context(storage_state=STORAGE_STATE_PATH)
         page = context.new_page()
         page.goto(edit_url, timeout=30000)
         page.wait_for_timeout(2500)
 
-        if "login" in page.url:
+        if "login" in page.url or "note.com/login" in page.url:
+            current_url = page.url
+            if not HEADLESS:
+                print("[DEBUG] ログイン画面と判定されたページで一時停止します。ブラウザを確認してください。")
+                page.wait_for_timeout(15000)
             browser.close()
             raise RuntimeError(
                 "noteのセッションが切れているようです(ログイン画面にリダイレクトされました)。"
+                f"リダイレクト先URL: {current_url} "
                 "login_once_note.py を再実行してセッションを更新してください。"
             )
 
