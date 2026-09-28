@@ -53,6 +53,9 @@ def post_to_threads(text: str, max_wait_seconds: int = 60) -> None:
         },
         timeout=30,
     )
+    if create_resp.status_code >= 400:
+        print(f"APIエラー応答本文: {create_resp.text}")
+
     create_resp.raise_for_status()
     creation_id = create_resp.json()["id"]
     print(f"Threadsコンテナ作成完了: {creation_id}")
@@ -66,6 +69,9 @@ def post_to_threads(text: str, max_wait_seconds: int = 60) -> None:
         data={"creation_id": creation_id, "access_token": access_token},
         timeout=30,
     )
+    if publish_resp.status_code >= 400:
+        print(f"APIエラー応答本文: {publish_resp.text}")
+
     publish_resp.raise_for_status()
     print(f"Threads投稿完了: {publish_resp.json()}")
 

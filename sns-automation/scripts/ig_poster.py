@@ -64,6 +64,9 @@ def post_to_instagram(caption: str, image_local_path: str, max_wait_seconds: int
         },
         timeout=30,
     )
+    if create_resp.status_code >= 400:
+        print(f"APIエラー応答本文: {create_resp.text}")
+
     create_resp.raise_for_status()
     creation_id = create_resp.json()["id"]
     print(f"メディアコンテナ作成完了: {creation_id}")
@@ -79,6 +82,9 @@ def post_to_instagram(caption: str, image_local_path: str, max_wait_seconds: int
             params={"fields": "status_code", "access_token": access_token},
             timeout=30,
         )
+        if status_resp.status_code >= 400:
+            print(f"APIエラー応答本文: {status_resp.text}")
+
         status_resp.raise_for_status()
         status = status_resp.json().get("status_code", "FINISHED")
 
@@ -91,6 +97,9 @@ def post_to_instagram(caption: str, image_local_path: str, max_wait_seconds: int
         data={"creation_id": creation_id, "access_token": access_token},
         timeout=30,
     )
+    if publish_resp.status_code >= 400:
+        print(f"APIエラー応答本文: {publish_resp.text}")
+
     publish_resp.raise_for_status()
     print(f"Instagram投稿完了: {publish_resp.json()}")
 
