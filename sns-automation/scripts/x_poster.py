@@ -168,6 +168,40 @@ X(旧Twitter)への投稿を、公式APIを使わずブラウザ操作(Playwrigh
   かどうかに関わらず、最終的な成否判定は9回目で追加したホームタイム
   ライン確認によって行うため、万一この10回目の対策でも投稿できて
   いなければ、誤って「成功」と報告することはない。
+
+2026-09-28 修正(11回目・真の根本原因を特定: insert_text()はDOM上の
+見た目は更新するがXの内部状態を更新しない):
+- 10回目の修正版を実行した結果、診断ログで
+  「[試行1] 投稿欄に反映された文字数: 244 (元の文字数: 240)」と本文は
+  正しく見えているにもかかわらず、post_button.click(timeout=8000) が
+  以下のログとともにタイムアウトしていることが判明した。
+    waiting for locator("button[data-testid=\"tweetButton\"]")
+    - locator resolved to <button disabled ... aria-disabled="true" ...>
+    - element is not enabled (retry attempt #1, #2, ... タイムアウトまで)
+  つまり、投稿欄のDOM上のテキスト(innerText)は正しく反映されている
+  のに、投稿ボタンの活性化を判定しているXの内部状態(Reactのcontrolled
+  な入力管理)は「本文なし」のままだった。これは、6回目でボタンと
+  投稿欄の取り違えが解消された後も、7〜10回目を通じて一貫して
+  観測されていた「ボタンがdisabledのまま」という症状すべてに共通する
+  真の根本原因だったと考えられる。5回目の修正で1文字ずつのtype()を
+  やめてinsert_text()に切り替えたことが、この不具合の直接の原因
+  だった: insert_text() はCDP経由でDOMに直接文字列を挿入するだけで、
+  Xの入力欄(Draft.js/React製)が内部状態を更新するために必要な
+  本物のキー入力イベント列(keydown/beforeinput/input等)を発生させて
+  いなかった。
+- 対策として、本文入力の方式を1文字ずつ本物のキーイベントを発生させる
+  page.keyboard.type(text, delay=15) に戻した。5回目の修正時に
+  type() をやめた理由(#ハッシュタグのオートコンプリートドロップダウン
+  による干渉)への対策として、本文入力後に
+  div[role="listbox"] (オートコンプリートの候補一覧) が実際に画面上に
+  開いている場合に限り Escape を送ってドロップダウンだけを閉じる
+  ようにした(8回目の修正で判明した通り、ドロップダウンが開いていない
+  状態でEscapeを送ると投稿ダイアログ自体が閉じてしまうため、必ず
+  開いていることを確認してから送る)。これにより、内部状態を正しく
+  更新しつつ、オートコンプリートの干渉も安全に回避できる。
+  文字入力中(type()の最中)はEscapeを送らないため、ハッシュタグの後に
+  改行やスペースが続いても、ドロップダウンの候補選択として誤解釈
+  される心配もない。
 """
 
 import os
@@ -269,32 +303,40 @@ def post_to_x(text: str) -> None:
             textbox = scope.locator('div[data-testid="tweetTextarea_0"]').first
             textbox.wait_for(state="visible", timeout=15000)
 
-            # 本文に # (ハッシュタグ) を含むため、1文字ずつ type() すると
-            # Xの入力補完(オートコンプリート)ドロップダウンが途中で反応し、
-            # 入力が正しく確定しないことがある。
-            # 1文字ずつではなく、1回でまとめて挿入する insert_text を使う。
+            # 11回目の修正: insert_text() はDOM上の見た目(innerText)は
+            # 正しく更新するが、Xの入力欄(Draft.js/React製)が投稿ボタンを
+            # 活性化させるために必要な内部状態を更新しない(本物のキー
+            # イベント列が発生しないため)ことが判明した。そのため、
+            # 1文字ずつ本物のキーイベントを発生させる page.keyboard.type()
+            # に戻す。5回目の修正で type() をやめた理由だった「#ハッシュ
+            # タグのオートコンプリートドロップダウンによる干渉」には、
+            # 入力完了後にドロップダウンが実際に開いている場合にだけ
+            # Escapeを送る(開いていなければ何もしない)ことで対処する。
             #
-            # 注意: ここで以前は「オートコンプリートを閉じるため」に
-            # Escapeキーを送っていたが、insert_text() ではオートコンプ
-            # リートのドロップダウンがほぼ開かず、Escapeは投稿ダイアログ
-            # 自体を閉じる操作として扱われ、「下書きを保存しますか?」の
-            # 確認マスクが画面を覆ってしまう不具合の原因だったため、
-            # 8回目の修正で完全に削除した。
-            #
-            # 9回目の修正: タイミングのずれにより insert_text が本文の
-            # 一部(1文字など)しか反映しないことがあったため、反映文字数を
-            # 確認し、一致しなければ再クリック→再挿入を最大3回まで試みる。
+            # 9回目の修正: タイミングのずれにより入力が本文の一部(1文字
+            # など)しか反映しないことがあったため、反映文字数を確認し、
+            # 一致しなければ再クリック→再入力を最大3回まで試みる。
             entered_len = 0
             for attempt in range(1, 4):
                 textbox.click()
                 page.wait_for_timeout(200)
-                # 前回の挿入が中途半端に残っている可能性があるため、
-                # 選択→削除してから挿入し直す。
+                # 前回の入力が中途半端に残っている可能性があるため、
+                # 選択→削除してから入力し直す。
                 page.keyboard.press("Control+A")
                 page.keyboard.press("Delete")
                 page.wait_for_timeout(200)
-                page.keyboard.insert_text(text)
+                page.keyboard.type(text, delay=15)
                 page.wait_for_timeout(500)
+                # オートコンプリートのドロップダウン(候補一覧)が実際に
+                # 開いている場合のみ、Escapeで閉じる。開いていない状態で
+                # Escapeを送ると投稿ダイアログ自体が閉じてしまう
+                # (8回目の修正で判明済み)ため、必ず存在確認してから送る。
+                try:
+                    if page.locator('div[role="listbox"]').count() > 0:
+                        page.keyboard.press("Escape")
+                        page.wait_for_timeout(300)
+                except Exception as e:  # noqa: BLE001
+                    print(f"[試行{attempt}] ドロップダウン確認に失敗:", e)
                 try:
                     entered_len = textbox.evaluate("el => el.innerText.length")
                 except Exception as e:  # noqa: BLE001
