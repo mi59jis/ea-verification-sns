@@ -6,10 +6,10 @@ on:
     # 「毎時ちょうど(0分)」はGitHub Actions側で混雑しやすく、数時間規模で
     # 遅延することがあるため、各時刻を数十分ずらしている(実際の判定は
     # post_scheduler.py 側のTOLERANCE_MINUTESで数時間の遅延も吸収する)。
-    - cron: "12 11 * * 1"  # 月 20:00 JST 頃 → note公開 + X + Instagram + Threads 新記事告知(1本目)
+    - cron: "12 11 * * 1"  # 月 20:00 JST 頃 → X + Instagram + Threads 新記事告知(1本目)
     - cron: "7 3 * * 2"    # 火 12:00 JST 頃 → X フック投稿
     - cron: "22 10 * * 3"  # 水 19:00 JST 頃 → Instagram カルーセル
-    - cron: "35 11 * * 4"  # 木 20:00 JST 頃 → note公開 + X + Instagram + Threads 新記事告知(2本目)
+    - cron: "35 11 * * 4"  # 木 20:00 JST 頃 → X + Instagram + Threads 新記事告知(2本目)
     - cron: "48 12 * * 5"  # 金 21:00 JST 頃 → X 警鐘投稿
   workflow_dispatch:      # 手動実行・DRY_RUNでのテスト用
     inputs:
@@ -19,7 +19,7 @@ on:
         default: "false"
 
 permissions:
-  contents: write   # posts_queue.csv の posted / note_published フラグをコミットし直すため
+  contents: write   # posts_queue.csv の posted フラグをコミットし直すため
 
 jobs:
   post:
@@ -40,10 +40,6 @@ jobs:
         run: |
           echo "${{ secrets.X_STORAGE_STATE_B64 }}" | base64 -d > sns-automation/x_storage_state.json
 
-      - name: Restore note session (storage_state)
-        run: |
-          echo "${{ secrets.NOTE_STORAGE_STATE_B64 }}" | base64 -d > sns-automation/note_storage_state.json
-
       - name: Run scheduler
         env:
           DRY_RUN: ${{ github.event.inputs.dry_run || 'false' }}
@@ -56,10 +52,10 @@ jobs:
           cd sns-automation
           python scripts/post_scheduler.py
 
-      - name: Commit updated queue (posted / note_published flags)
+      - name: Commit updated queue (posted flags)
         run: |
           git config user.name "sns-auto-bot"
           git config user.email "actions@users.noreply.github.com"
           git add sns-automation/config/posts_queue.csv
-          git diff --cached --quiet || git commit -m "chore: update posts_queue.csv (posted / note_published flags)"
+          git diff --cached --quiet || git commit -m "chore: update posts_queue.csv (posted flags)"
           git push
