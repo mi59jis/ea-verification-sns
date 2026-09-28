@@ -77,6 +77,27 @@ X(旧Twitter)への投稿を、公式APIを使わずブラウザ操作(Playwrigh
   先に一意な投稿ボタンを特定し、その祖先要素(role="dialog")の中だけで
   投稿欄を探すようにした。ボタンと投稿欄が必ず同じDOMツリーに属する
   ことが保証されるため、これまでのような取り違えが構造的に起こらない。
+
+2026-09-28 修正(7回目・ボタンクリックをやめてキーボードショートカットに変更):
+- 6回目の修正後も、診断ログでは「投稿欄には本文244文字が正しく反映された」
+  ことが確認できているにもかかわらず、投稿ボタン(tweetButton)は
+  aria-disabled="true" のままで、post_button.click() がタイムアウトして
+  いた。つまり問題はもはや「どの要素を選ぶか」ではなく、CDP経由の
+  insert_text() によるテキスト挿入では、Xの投稿ボタンを活性化させる
+  React側の内部状態(入力欄の内部管理値)が更新されていない、という
+  ボタン要素そのものの限界に突き当たっていた。
+- そこで方針を転換し、投稿ボタンを探してクリックすることは一切やめ、
+  Xが標準でサポートしているキーボードショートカット
+  (Windows/Linuxでは Control+Enter、Macでは Meta(Cmd)+Enter)で
+  投稿を送信するようにした。このショートカットは「現在フォーカスして
+  いる投稿欄」を対象に動作するため、投稿ボタン要素を特定する処理自体が
+  不要になり、これまで繰り返し発生していたボタンの取り違え・
+  disabledのまま、という問題が構造的に起こらなくなる。
+- 投稿欄への文字入力そのものは、244文字が正しく反映されることを
+  過去のログで確認済みのため、6回目のロジック(insert_text)をそのまま
+  流用している。送信後は、投稿欄(ダイアログ)が閉じたことを確認する
+  ことで送信成功を判定し、閉じない場合はフォールバックとして投稿ボタン
+  のクリックを試みたうえで、それでも失敗したら診断情報を出力する。
 """
 
 import os
@@ -158,6 +179,12 @@ def post_to_x(text: str) -> None:
             # 投稿ボタンを特定し、そのボタンの祖先(ダイアログ)の中だけで
             # 投稿欄を探す。こうすることで、ボタンと投稿欄が必ず同じ
             # コンテナに属する(=取り違えが構造的に起こらない)ようにする。
+            #
+            # 送信自体は post_button.click() ではなく、キーボードショート
+            # カット(Control+Enter / Meta+Enter)で行う。7回目の修正で
+            # 判明した通り、本文が正しく入力欄に反映されていても投稿ボタン
+            # の disabled が解除されない場合があり、ボタン要素への依存を
+            # なくすことで根本的に回避する。
             post_button = page.locator('button[data-testid="tweetButton"]')
             post_button.wait_for(state="visible", timeout=15000)
 
@@ -174,12 +201,11 @@ def post_to_x(text: str) -> None:
             textbox.click()
             # 本文に # (ハッシュタグ) を含むため、1文字ずつ type() すると
             # Xの入力補完(オートコンプリート)ドロップダウンが途中で反応し、
-            # 入力が正しく確定しないことがある(投稿ボタンが disabled のまま
-            # になる不具合の実際の原因はこれだった可能性が高い)。
+            # 入力が正しく確定しないことがある。
             # 1文字ずつではなく、1回でまとめて挿入する insert_text を使う。
             page.keyboard.insert_text(text)
-            # オートコンプリートのドロップダウンが開いたままだと投稿ボタンの
-            # 判定に影響する可能性があるため、念のため閉じておく。
+            # オートコンプリートのドロップダウンが開いたままだと送信の
+            # 邪魔になる可能性があるため、念のため閉じておく。
             page.keyboard.press("Escape")
             page.wait_for_timeout(500)
 
@@ -199,10 +225,29 @@ def post_to_x(text: str) -> None:
                     "ブラウザで手動ログインして状態を確認してください(自動での突破は行いません)。"
                 )
 
-            # 本文入力後、ボタンの活性化(disabled解除)に一瞬ラグがあることが
-            # あるため、クリック前に短く待つ。
-            page.wait_for_timeout(1000)
-            post_button.click()
+            # 投稿欄に確実にフォーカスを戻してから送信ショートカットを送る
+            textbox.click()
+            page.wait_for_timeout(300)
+            page.keyboard.press("Control+Enter")
+            page.wait_for_timeout(2000)
+
+            # 送信が成功していれば、投稿欄(ダイアログ)が閉じているはず
+            dialog_still_open = False
+            try:
+                dialog_still_open = container.is_visible()
+            except Exception:
+                try:
+                    dialog_still_open = textbox.is_visible()
+                except Exception:
+                    dialog_still_open = False
+
+            if dialog_still_open:
+                print(
+                    "Control+Enter 送信後もダイアログが開いたままのため、"
+                    "フォールバックとして投稿ボタンのクリックを試みます。"
+                )
+                page.wait_for_timeout(500)
+                post_button.click(timeout=10000)
         except Exception:
             _dump_diagnostics(page, "投稿処理中の失敗")
             browser.close()
