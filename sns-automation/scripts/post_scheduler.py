@@ -6,7 +6,7 @@ GitHub Actions から cron で呼び出される想定のエントリーポイ�
 1. config/schedule.yaml を見て「今がどのスロットか」を判定する
 2. config/posts_queue.csv からそのスロット用の未投稿(posted=no)行を1件取る
 3. config/templates.yaml のテンプレに値を埋め込んで本文を作る
-4. platform に応じて x_poster / ig_poster を呼び出す
+4. platform に応じて x_poster / ig_poster / note_poster を呼び出す
 5. 成功したら posts_queue.csv の該当行を posted=yes に更新する
 
 実行タイミングは GitHub Actions 側の cron で決めるので、このスクリプト自体は
@@ -20,6 +20,14 @@ GitHub Actions から cron で呼び出される想定のエントリーポイ�
 見失ってしまうため、各スロットについて「直近の該当曜日・時刻」からの
 経過時間を計算する方式に変更し、許容幅(TOLERANCE_MINUTES)も
 数時間規模の遅延を吸収できるよう広げています。
+
+追記(note記事の自動公開について): note.comの下書き公開(タグ付け・有料設定・
+投稿)も、note_poster.py を使ってこのスクリプトから行えるようにしました。
+スロットの platform に "note" が含まれ、posts_queue.csv の該当行に
+note_draft_id が設定されている場合、他のSNS投稿より先に note記事を公開します。
+公開に失敗した場合はその回のSNS投稿もまとめて中断し、次回のcron実行で
+自動的に再試行します(ユーザーのPCの状態に関係なくGitHub Actions側で
+動くため、時間をおいて何度でも安全にリトライできます)。
 """
 
 import csv
@@ -43,16 +51,13 @@ WEEKDAY_MAP = {"mon": 0, "tue": 1, "wed": 2, "thu": 3, "fri": 4, "sat": 5, "sun"
 # 重複マッチする心配はない)
 TOLERANCE_MINUTES = 360
 
-
 def now_jst() -> datetime.datetime:
     jst = datetime.timezone(datetime.timedelta(hours=9))
     return datetime.datetime.now(jst)
 
-
 def load_yaml(path):
     with open(path, "r", encoding="utf-8") as f:
         return yaml.safe_load(f)
-
 
 def find_active_slot(schedule, now):
     # 各スロットについて「直近の該当曜日・時刻(今より前で最も近いもの)」を求め、
@@ -76,7 +81,6 @@ def find_active_slot(schedule, now):
                 best_slot = slot
     return best_slot
 
-
 def load_queue_row(slot_id):
     with open(QUEUE_PATH, "r", encoding="utf-8", newline="") as f:
         reader = csv.DictReader(f)
@@ -85,7 +89,6 @@ def load_queue_row(slot_id):
         if row["slot_id"] == slot_id and row.get("posted", "no") == "no":
             return row, rows
     return None, rows
-
 
 def mark_posted(slot_id, report_no, rows):
     for row in rows:
@@ -97,12 +100,20 @@ def mark_posted(slot_id, report_no, rows):
         writer.writeheader()
         writer.writerows(rows)
 
+def mark_note_published(slot_id, report_no, rows):
+    for row in rows:
+        if row["slot_id"] == slot_id and row["report_no"] == report_no:
+            row["note_published"] = "yes"
+    fieldnames = list(rows[0].keys())
+    with open(QUEUE_PATH, "w", encoding="utf-8", newline="") as f:
+        writer = csv.DictWriter(f, fieldnames=fieldnames)
+        writer.writeheader()
+        writer.writerows(rows)
 
 def render(template_str, row):
     # 空欄のセルは "" のまま埋め込む(未使用フィールドはテンプレ側で使わない前提)
     safe_row = {k: (v if v is not None else "") for k, v in row.items()}
     return template_str.format(**safe_row)
-
 
 def build_message(templates, platform, template_key, row):
     # そのプラットフォーム専用のテンプレが無ければ x 用のテンプレで代用する
@@ -131,7 +142,6 @@ def build_message(templates, platform, template_key, row):
 
     return message
 
-
 def main():
     schedule = load_yaml(SCHEDULE_PATH)
     templates = load_yaml(TEMPLATES_PATH)
@@ -156,6 +166,29 @@ def main():
         platforms = raw_platform
     else:
         platforms = [raw_platform]
+
+    # note記事の公開は他のSNS投稿より先に行う(SNS側が記事URLにリンクするため)。
+    # note_draft_id が設定されていて、まだ公開していない場合のみ実行する。
+    # 失敗した場合はこの回のSNS投稿も含めて中断し、次回の実行(cron)で再試行する
+    # (二重公開を防ぐため note_published=yes になるまでは何度でも安全に再試行できる)。
+    if "note" in platforms:
+        draft_id = (row.get("note_draft_id") or "").strip()
+        already_published = (row.get("note_published") or "no") == "yes"
+        if draft_id and not already_published:
+            if os.environ.get("DRY_RUN", "false").lower() == "true":
+                print(f"[DRY_RUN] note記事({draft_id})の公開をスキップしました。")
+            else:
+                from note_poster import publish_note_draft
+                try:
+                    published_url = publish_note_draft(draft_id)
+                    print(f"note記事を公開しました: {published_url}")
+                    mark_note_published(slot["id"], row["report_no"], rows)
+                    row["note_published"] = "yes"
+                except Exception as e:
+                    print(f"note記事の公開に失敗しました: {e}")
+                    print("SNS投稿も含めて今回は中断し、次回の実行で再試行します。")
+                    return 1
+        platforms = [p for p in platforms if p != "note"]
 
     for platform in platforms:
         message = build_message(templates, platform, slot["template"], row)
@@ -187,7 +220,6 @@ def main():
     mark_posted(slot["id"], row["report_no"], rows)
     print("posts_queue.csv を更新しました(posted=yes)。")
     return 0
-
 
 if __name__ == "__main__":
     sys.path.insert(0, os.path.join(BASE_DIR, "scripts"))
