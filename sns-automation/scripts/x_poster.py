@@ -148,6 +148,26 @@ X(旧Twitter)への投稿を、公式APIを使わずブラウザ操作(Playwrigh
      タイムライン上に実際に表示されているかどうかを確認してから
      初めて「投稿が完了しました」とログに出すようにした。この確認が
      取れない場合は、成功と誤報告せず例外を送出する。
+
+2026-09-28 修正(10回目・Control+Enterショートカットが実際には機能して
+いなかったことが判明):
+- 9回目の修正で追加したホームタイムライン確認により、初めて正確な実態が
+  わかった。ログ上は「[試行1] 投稿欄に反映された文字数: 244 (元の文字数:
+  240)」と本文入力は完全に成功していたにもかかわらず、Control+Enter
+  送信後にXアカウント(@eakensholab)を実際に確認すると投稿数は0件の
+  ままだった。7回目の修正で導入した「投稿ボタンのクリックをやめて
+  Control+Enterショートカットで送信する」という方針そのものが誤りで、
+  この投稿欄ではControl+Enterによる送信が機能していなかったと判明した。
+- 対策として、送信方法を「投稿ボタンのクリックを優先し、失敗した場合の
+  みControl+Enterをフォールバックとして試す」方式に戻した。6回目の
+  修正で確立した「投稿ボタンの祖先ダイアログの中だけで投稿欄を探す」
+  という構造的な対応付けにより、ボタンと投稿欄の取り違えは既に解消
+  されているため、あとはボタンの有効化(disabled解除)を
+  post_button.click(timeout=8000) のPlaywright標準の自動リトライに
+  任せることで、本文入力後の有効化ラグを吸収する。クリックが成功した
+  かどうかに関わらず、最終的な成否判定は9回目で追加したホームタイム
+  ライン確認によって行うため、万一この10回目の対策でも投稿できて
+  いなければ、誤って「成功」と報告することはない。
 """
 
 import os
@@ -309,39 +329,40 @@ def post_to_x(text: str) -> None:
                     "ブラウザで手動ログインして状態を確認してください(自動での突破は行いません)。"
                 )
 
-            # insert_text 直後のフォーカスを保ったまま送信ショートカットを
-            # 送る(8回目の修正: ここで投稿欄へ再クリックしていたが、
-            # 直前のEscape押下により既にダイアログが閉じかけている状態
-            # だったため、再クリックが「下書き保存確認」マスクに阻まれて
-            # 失敗していた。Escapeを削除した今は再クリックも不要)。
-            page.keyboard.press("Control+Enter")
-            page.wait_for_timeout(2500)
-
-            # 送信が成功していれば、投稿欄(ダイアログ)が閉じているはず
-            dialog_still_open = False
+            # 10回目の修正: 9回目の実行結果、本文は正しく(244/240文字)
+            # 反映されていたにもかかわらず、Control+Enter では実際には
+            # 投稿されていなかったことがホームタイムライン確認で判明した
+            # (Xアカウントの投稿数が0件のままだった)。Control+Enter という
+            # ショートカット自体がこの投稿欄では機能していない可能性が高い
+            # ため、まず本来の投稿ボタンのクリックを試み、有効化されるまで
+            # Playwrightの自動リトライ(最大8秒)に任せる。それでも失敗
+            # した場合にのみ Control+Enter をフォールバックとして試す。
+            button_click_succeeded = False
             try:
-                dialog_still_open = container.is_visible()
-            except Exception:
-                try:
-                    dialog_still_open = textbox.is_visible()
-                except Exception:
-                    dialog_still_open = False
+                post_button.click(timeout=8000)
+                button_click_succeeded = True
+                print("投稿ボタンのクリックに成功しました。")
+            except Exception as e:  # noqa: BLE001
+                print("投稿ボタンのクリックに失敗(タイムアウトの可能性):", e)
 
-            if dialog_still_open:
+            if not button_click_succeeded:
                 print(
-                    "Control+Enter 送信後もダイアログが開いたままのため、"
-                    "フォールバックとして投稿ボタンのクリックを試みます。"
+                    "投稿ボタンのクリックが失敗したため、"
+                    "フォールバックとして Control+Enter での送信を試みます。"
                 )
-                page.wait_for_timeout(500)
-                post_button.click(timeout=10000)
-                page.wait_for_timeout(2000)
+                page.keyboard.press("Control+Enter")
+
+            page.wait_for_timeout(2500)
 
             # 9回目の修正: 「ダイアログが閉じた」だけでは投稿成功の証拠に
             # ならない(実際には本文がほぼ空のまま送信され、ダイアログだけ
             # 閉じて0件投稿だったケースが確認された)。ホームタイムラインを
             # 開き、投稿した本文の先頭部分が実際に表示されているかどうかを
             # 確認してから、初めて成功と判断する。
-            verify_snippet = text.strip()[:20]
+            # 10回目の修正: 改行や絵文字混じりの長い断片だとテキスト一致の
+            # 判定が不安定になりうるため、本文の1行目(先頭の短い一意な
+            # 部分)だけを使うようにした。
+            verify_snippet = text.strip().split("\n")[0].strip()[:15]
             posted_confirmed = False
             try:
                 page.goto("https://x.com/home", timeout=20000)
