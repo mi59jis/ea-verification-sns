@@ -39,7 +39,7 @@ slots:
   - id: mon_launch
     weekday: mon           # mon/tue/wed/thu/fri/sat/sun
     time: "20:00"
-    platform: [instagram, threads]   # 一時変更: Xは既に投稿済みのためスキップ(後で元に戻す)
+    platform: [threads]   # 一時変更: X投稿済み+Instagramはトークン期限切れのため先にThreadsのみ試す
     template: new_article
     note: "月曜公開の新記事の告知(週の1本目)"
 
