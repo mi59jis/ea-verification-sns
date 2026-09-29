@@ -39,7 +39,7 @@ slots:
   - id: mon_launch
     weekday: mon           # mon/tue/wed/thu/fri/sat/sun
     time: "20:00"
-    platform: [instagram, threads]   # 一時変更: X投稿済み。Instagram=トークン期限切れ、Threads=Meta側API access blocked(OAuthException code200)。両方とも要ユーザー確認
+    platform: [instagram]   # 一時変更: Instagram単体でテスト中。X投稿済み。ThreadsはMeta側のAPI access blocked未確認のため除外
     template: new_article
     note: "月曜公開の新記事の告知(週の1本目)"
 
