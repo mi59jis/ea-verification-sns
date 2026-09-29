@@ -37,9 +37,9 @@ timezone: "Asia/Tokyo"
 slots:
   # ── 月・木: 新記事告知(3プラットフォーム同時、既存のまま) ──────────
   - id: mon_launch
-    weekday: tue           # mon/tue/wed/thu/fri/sat/sun
-    time: "20:45"
-    platform: [instagram]   # 一時変更: Instagram単体でテスト中。X投稿済み。ThreadsはMeta側のAPI access blocked未確認のため除外
+    weekday: mon               # mon/tue/wed/thu/fri/sat/sun
+    time: "20:00"
+    platform: [x, instagram]   # 通常運用に復帰。ThreadsはAPI access blocked未復旧のため除外(他スロットで頻繁に投稿中)
     template: new_article
     note: "月曜公開の新記事の告知(週の1本目)"
 
