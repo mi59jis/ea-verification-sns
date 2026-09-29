@@ -27,7 +27,7 @@ import time
 
 import requests
 
-GRAPH_API_VERSION = "v21.0"
+GRAPH_API_VERSION = "v1.0"
 GRAPH_API_BASE = f"https://graph.threads.net/{GRAPH_API_VERSION}"
 
 MAX_CHARS = 500
