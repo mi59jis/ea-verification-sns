@@ -59,7 +59,7 @@ WEEKDAY_MAP = {"mon": 0, "tue": 1, "wed": 2, "thu": 3, "fri": 4, "sat": 5, "sun"
 # 半日以内の遅延なら拾えるよう6時間(360分)に設定している。
 # (スロット同士は最短でも16時間以上離れているため、誤って別のスロットと
 # 重複マッチする心配はない)
-TOLERANCE_MINUTES = 3000  # 一時拡大(本番還元予定): Instagramトークン復旧待ちでmon_launchの投稿窓が切れたため
+TOLERANCE_MINUTES = 360  # 元に戻しました(3000への拡大はtue_hookと誤マッチしたため取り消し)
 
 def now_jst() -> datetime.datetime:
     jst = datetime.timezone(datetime.timedelta(hours=9))
