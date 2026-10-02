@@ -1,136 +1,19 @@
-# EA検証ラボ SNS自動投稿スケジュール
-# 曜日・時間はすべて JST(日本時間)。post_scheduler.py がこれを見て
-# 「今、投稿すべきスロットかどうか」を判定します。
-# GitHub Actions 側の cron は UTC 表記になるので workflow ファイルとは
-# 9時間ズレていますが、実際の判定はこのファイルの JST 基準で行われます。
-#
-# note記事の公開は「毎日」ではなく、月曜・木曜の20時頃に1本ずつ。
-# それに合わせて、SNSの投稿も月・木を「新記事告知」の軸にし、
-# 間の火・水・金でその記事の内容を小出しにする構成にしています。
-#
-# 2026-09-28 更新: プラットフォームごとに最適な頻度へ調整し、
-# 新記事に紐づかない「軽い投稿(tip)」を各SNSの空いている時間帯に追加。
-# 頻度の考え方(投稿手段のリスクに応じて差をつけています):
-#   - Threads: 公式API・上限が非常に緩い(1日あたり数万リクエスト規模)ため、
-#     ほぼ毎日投稿(週6本)まで増量。
-#   - Instagram: 公式APIで安全だが、フィード投稿は24時間で25本までの
-#     ローリング上限があるほか、頻度を上げすぎるとエンゲージメント率が
-#     下がる可能性もあるため、週5本(ほぼ隔日)に増量。
-#   - X: 公式APIではなく、保存済みセッションを使ったブラウザ自動操作
-#     (Playwright)で投稿しているため、利用規約上のアカウント制限・凍結
-#     リスクがある。ここは最も慎重にし、週4本→週5本の小幅増量のみに
-#     とどめ、土日は投稿しない(既存の運用パターンを維持)。
-#
-# 新しいスロット同士・既存スロットとの時間差は、cronの遅延を吸収する
-# 許容幅(post_scheduler.py の TOLERANCE_MINUTES=360分=6時間)より必ず
-# 大きく取り、同じ曜日の中で誤って別のスロットとマッチしないようにして
-# います(同じ曜日内の各スロットは最低でも8時間以上離しています)。
-#
-# 注記: note記事自体の公開(下書き→タグ付け→有料設定→投稿)は、
-# note.comのbot検知(reCAPTCHA)によりPlaywright等の新規自動化ブラウザからは
-# 行えないことが判明したため、GitHub Actions側では扱わず、別のCowork
-# スケジュールタスク(ユーザーのPC上の実ブラウザ経由)で行っています。
-# ここでのSNS投稿は、その記事が公開済みであることを前提に動きます。
-
-timezone: "Asia/Tokyo"
-
+# 投稿スケジュール v2(JST)
+# 毎日 朝8:00 と 夜20:00 に、X・Instagram・Threads へ投稿します。
+#   朝 … 毎日 random_ea(EAに関するネタ帳からランダム)
+#   夜 … 毎日 random_ea(note記事の告知はしない方針。記事の公開時刻に依存しないため)
 slots:
-  # ── 月・木: 新記事告知(3プラットフォーム同時、既存のまま) ──────────
-  - id: mon_launch
-    weekday: mon               # mon/tue/wed/thu/fri/sat/sun
-    time: "20:00"
-    platform: [x, instagram]   # 通常運用に復帰。ThreadsはAPI access blocked未復旧のため除外(他スロットで頻繁に投稿中)
-    template: new_article
-    note: "月曜公開の新記事の告知(週の1本目)"
-
-  - id: thu_launch
-    weekday: thu
-    time: "20:00"
-    platform: [x, instagram, threads]   # 3つ同時
-    template: new_article
-    note: "木曜公開の新記事の告知(週の2本目)"
-
-  # ── 火: 既存のXフック + 新規Threads tip ─────────────────────────
-  - id: tue_hook
-    weekday: tue
-    time: "12:00"
-    platform: x
-    template: hook_single
-    note: "月曜記事の数字を1つ抜き出して投稿"
-
-  - id: tue_tip_threads
-    weekday: tue
-    time: "21:00"
-    platform: threads
-    template: tip
-    note: "軽い投稿(教育系Tips)。tue_hookの12:00から9時間離して重複判定を回避"
-
-  # ── 水: 既存のIGカルーセル + 新規X tip(慎重に週+1本のみ) ────────
-  - id: wed_tip_x
-    weekday: wed
-    time: "08:00"
-    platform: x
-    template: tip
-    note: "Xは自動化のリスクが高いため慎重に週+1本のみ増量。wed_carouselの19:00から11時間離す"
-
-  - id: wed_carousel
-    weekday: wed
-    time: "19:00"
-    platform: instagram
-    template: carousel
-    note: "月曜記事のビフォー/アフター画像+まとめ表をカルーセルで"
-
-  # ── 金: 既存のX警鐘 + 新規Threads tip ───────────────────────────
-  - id: fri_tip_threads
-    weekday: fri
-    time: "08:00"
-    platform: threads
-    template: tip
-    note: "軽い投稿(教育系Tips)。fri_warningの21:00から13時間離す"
-
-  - id: fri_warning
-    weekday: fri
-    time: "21:00"
-    platform: x
-    template: warning
-    note: "悪い結果の事例(匿名)を紹介し危機感を作る(木曜記事の内容を使用)"
-
-  # ── 土・日: 新規。ThreadsとInstagramのみ(Xは投稿しない) ─────────
-  - id: sat_tip_threads
-    weekday: sat
-    time: "10:00"
-    platform: threads
-    template: tip
-    note: "軽い投稿(教育系Tips)。土日はThreads/Instagramのみ、Xは休み"
-
-  - id: sat_tip_instagram
-    weekday: sat
-    time: "18:00"
-    platform: instagram
-    template: tip
-    note: "軽い投稿(教育系Tips)。sat_tip_threadsの10:00から8時間離す"
-
-  - id: sun_tip_threads
-    weekday: sun
-    time: "10:00"
-    platform: threads
-    template: tip
-    note: "軽い投稿(教育系Tips)"
-
-  - id: sun_tip_instagram
-    weekday: sun
-    time: "18:00"
-    platform: instagram
-    template: tip
-    note: "軽い投稿(教育系Tips)。sun_tip_threadsの10:00から8時間離す"
-
-# 週間頻度まとめ(このファイル更新後):
-#   X:         月・火・水・木・金 = 週5本(土日なし、既存+1本のみ)
-#   Instagram: 月・水・木・土・日 = 週5本(既存+2本)
-#   Threads:   月・火・木・金・土・日 = 週6本(既存+4本、水のみなし)
-#
-# tip系スロット(template: tip)は posts_queue.csv の行を消費しません。
-# 内容は config/tips.yaml からローテーションで選ばれます
-# (詳しくは post_scheduler.py / tips.yaml を参照)。Instagramのtip投稿の
-# 画像は sns-automation/images/tip_01.png 〜 tip_05.png をローテーションで
-# 使用します。
+  - {id: mon_am,     weekday: mon, time: "08:00", platform: [x, instagram, threads], template: random_ea}
+  - {id: mon_pm, weekday: mon, time: "20:00", platform: [x, instagram, threads], template: random_ea}
+  - {id: tue_am,     weekday: tue, time: "08:00", platform: [x, instagram, threads], template: random_ea}
+  - {id: tue_pm,     weekday: tue, time: "20:00", platform: [x, instagram, threads], template: random_ea}
+  - {id: wed_am,     weekday: wed, time: "08:00", platform: [x, instagram, threads], template: random_ea}
+  - {id: wed_pm, weekday: wed, time: "20:00", platform: [x, instagram, threads], template: random_ea}
+  - {id: thu_am,     weekday: thu, time: "08:00", platform: [x, instagram, threads], template: random_ea}
+  - {id: thu_pm,     weekday: thu, time: "20:00", platform: [x, instagram, threads], template: random_ea}
+  - {id: fri_am,     weekday: fri, time: "08:00", platform: [x, instagram, threads], template: random_ea}
+  - {id: fri_pm, weekday: fri, time: "20:00", platform: [x, instagram, threads], template: random_ea}
+  - {id: sat_am,     weekday: sat, time: "08:00", platform: [x, instagram, threads], template: random_ea}
+  - {id: sat_pm,     weekday: sat, time: "20:00", platform: [x, instagram, threads], template: random_ea}
+  - {id: sun_am,     weekday: sun, time: "08:00", platform: [x, instagram, threads], template: random_ea}
+  - {id: sun_pm,     weekday: sun, time: "20:00", platform: [x, instagram, threads], template: random_ea}
