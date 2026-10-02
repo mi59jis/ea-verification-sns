@@ -57,7 +57,7 @@ jobs:
         run: |
           git config user.name "sns-auto-bot"
           git config user.email "actions@users.noreply.github.com"
-          git add sns-automation/config/posts_queue.csv sns-automation/config/last_run.json
+          git add -A sns-automation/config
           git diff --cached --quiet || git commit -m "chore: update posts_queue.csv / last_run.json"
           git pull --rebase || true
           git push
