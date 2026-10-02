@@ -2,28 +2,21 @@ name: SNS auto post (EA検証ラボ)
 
 on:
   schedule:
-    # すべて UTC 表記(JSTの-9時間)。config/schedule.yaml の JST 時刻と対応。
-    # 「毎時ちょうど(0分)」はGitHub Actions側で混雑しやすく、数時間規模で
-    # 遅延することがあるため、各時刻を数十分ずらしている(実際の判定は
-    # post_scheduler.py 側のTOLERANCE_MINUTESで数時間の遅延も吸収する)。
-    - cron: "12 11 * * 1"  # 月 20:00 JST 頃 → X + Instagram + Threads 新記事告知(1本目)
-    - cron: "7 3 * * 2"    # 火 12:00 JST 頃 → X フック投稿
-    - cron: "18 12 * * 2"  # 火 21:00 JST 頃 → Threads 軽い投稿(tip)
-    - cron: "41 23 * * 2"  # 水 08:00 JST 頃 → X 軽い投稿(tip、週+1本のみ・慎重運用)
-    - cron: "22 10 * * 3"  # 水 19:00 JST 頃 → Instagram カルーセル
-    - cron: "35 11 * * 4"  # 木 20:00 JST 頃 → X + Instagram + Threads 新記事告知(2本目)
-    - cron: "53 23 * * 4"  # 金 08:00 JST 頃 → Threads 軽い投稿(tip)
-    - cron: "48 12 * * 5"  # 金 21:00 JST 頃 → X 警鐘投稿
-    - cron: "6 1 * * 6"    # 土 10:00 JST 頃 → Threads 軽い投稿(tip)
-    - cron: "29 9 * * 6"   # 土 18:00 JST 頃 → Instagram 軽い投稿(tip)
-    - cron: "14 1 * * 0"   # 日 10:00 JST 頃 → Threads 軽い投稿(tip)
-    - cron: "37 9 * * 0"   # 日 18:00 JST 頃 → Instagram 軽い投稿(tip)
+    # すべて UTC 表記(JSTの-9時間)。毎日2回(朝8時台・夜20時台 JST)。
+    # 「ちょうど0分」は混雑して遅延しやすいため、分をずらしている。
+    # 判定は post_scheduler.py 側で行い、数時間の遅延も吸収する。
+    - cron: "17 23 * * *"   # 毎日 朝 08:17 JST 頃
+    - cron: "12 11 * * *"   # 毎日 夜 20:12 JST 頃
   workflow_dispatch:      # 手動実行・DRY_RUNでのテスト用
     inputs:
       dry_run:
         description: "true にすると投稿せず内容だけ表示します"
         required: false
         default: "false"
+
+concurrency:
+  group: sns-auto-post
+  cancel-in-progress: false
 
 permissions:
   contents: write   # posts_queue.csv の posted フラグをコミットし直すため
@@ -59,10 +52,12 @@ jobs:
           cd sns-automation
           python scripts/post_scheduler.py
 
-      - name: Commit updated queue (posted flags)
+      - name: Commit updated queue / state
+        if: always()
         run: |
           git config user.name "sns-auto-bot"
           git config user.email "actions@users.noreply.github.com"
-          git add sns-automation/config/posts_queue.csv
-          git diff --cached --quiet || git commit -m "chore: update posts_queue.csv (posted flags)"
+          git add sns-automation/config/posts_queue.csv sns-automation/config/last_run.json
+          git diff --cached --quiet || git commit -m "chore: update posts_queue.csv / last_run.json"
+          git pull --rebase || true
           git push
