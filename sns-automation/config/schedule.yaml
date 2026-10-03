@@ -1,19 +1,18 @@
 # 投稿スケジュール v2(JST)
-# 毎日 朝8:00 と 夜20:00 に、X・Instagram・Threads へ投稿します。
-#   朝 … 毎日 random_ea(EAに関するネタ帳からランダム)
-#   夜 … 毎日 random_ea(note記事の告知はしない方針。記事の公開時刻に依存しないため)
+# 毎日 朝6:00 と 夕方18:00 に、X・Instagram・Threads へ投稿します。
+# 内容はすべて random_ea(EAに関するネタ帳からランダム)
 slots:
-  - {id: mon_am,     weekday: mon, time: "08:00", platform: [x, instagram, threads], template: random_ea}
-  - {id: mon_pm, weekday: mon, time: "20:00", platform: [x, instagram, threads], template: random_ea}
-  - {id: tue_am,     weekday: tue, time: "08:00", platform: [x, instagram, threads], template: random_ea}
-  - {id: tue_pm,     weekday: tue, time: "20:00", platform: [x, instagram, threads], template: random_ea}
-  - {id: wed_am,     weekday: wed, time: "08:00", platform: [x, instagram, threads], template: random_ea}
-  - {id: wed_pm, weekday: wed, time: "20:00", platform: [x, instagram, threads], template: random_ea}
-  - {id: thu_am,     weekday: thu, time: "08:00", platform: [x, instagram, threads], template: random_ea}
-  - {id: thu_pm,     weekday: thu, time: "20:00", platform: [x, instagram, threads], template: random_ea}
-  - {id: fri_am,     weekday: fri, time: "08:00", platform: [x, instagram, threads], template: random_ea}
-  - {id: fri_pm, weekday: fri, time: "20:00", platform: [x, instagram, threads], template: random_ea}
-  - {id: sat_am,     weekday: sat, time: "08:00", platform: [x, instagram, threads], template: random_ea}
-  - {id: sat_pm,     weekday: sat, time: "20:00", platform: [x, instagram, threads], template: random_ea}
-  - {id: sun_am,     weekday: sun, time: "08:00", platform: [x, instagram, threads], template: random_ea}
-  - {id: sun_pm,     weekday: sun, time: "20:00", platform: [x, instagram, threads], template: random_ea}
+  - {id: mon_am, weekday: mon, time: "06:00", platform: [x, instagram, threads], template: random_ea}
+  - {id: mon_pm, weekday: mon, time: "18:00", platform: [x, instagram, threads], template: random_ea}
+  - {id: tue_am, weekday: tue, time: "06:00", platform: [x, instagram, threads], template: random_ea}
+  - {id: tue_pm, weekday: tue, time: "18:00", platform: [x, instagram, threads], template: random_ea}
+  - {id: wed_am, weekday: wed, time: "06:00", platform: [x, instagram, threads], template: random_ea}
+  - {id: wed_pm, weekday: wed, time: "18:00", platform: [x, instagram, threads], template: random_ea}
+  - {id: thu_am, weekday: thu, time: "06:00", platform: [x, instagram, threads], template: random_ea}
+  - {id: thu_pm, weekday: thu, time: "18:00", platform: [x, instagram, threads], template: random_ea}
+  - {id: fri_am, weekday: fri, time: "06:00", platform: [x, instagram, threads], template: random_ea}
+  - {id: fri_pm, weekday: fri, time: "18:00", platform: [x, instagram, threads], template: random_ea}
+  - {id: sat_am, weekday: sat, time: "06:00", platform: [x, instagram, threads], template: random_ea}
+  - {id: sat_pm, weekday: sat, time: "18:00", platform: [x, instagram, threads], template: random_ea}
+  - {id: sun_am, weekday: sun, time: "06:00", platform: [x, instagram, threads], template: random_ea}
+  - {id: sun_pm, weekday: sun, time: "18:00", platform: [x, instagram, threads], template: random_ea}
