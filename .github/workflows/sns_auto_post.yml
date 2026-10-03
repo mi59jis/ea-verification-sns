@@ -5,8 +5,10 @@ on:
     # すべて UTC 表記(JSTの-9時間)。毎日2回(朝8時台・夜20時台 JST)。
     # 「ちょうど0分」は混雑して遅延しやすいため、分をずらしている。
     # 判定は post_scheduler.py 側で行い、数時間の遅延も吸収する。
-    - cron: "17 23 * * *"   # 毎日 朝 08:17 JST 頃
-    - cron: "12 11 * * *"   # 毎日 夜 20:12 JST 頃
+    - cron: "5 21 * * *"
+    - cron: "35 21 * * *"
+    - cron: "5 9 * * *"
+    - cron: "35 9 * * *"
   workflow_dispatch:      # 手動実行・DRY_RUNでのテスト用
     inputs:
       dry_run:
