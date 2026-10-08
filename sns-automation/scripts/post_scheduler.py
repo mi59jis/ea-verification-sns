@@ -329,7 +329,11 @@ def main():
                 failures.append(platform)
                 continue
         else:
-            message = build_message(templates, platform, mode, row)
+            # hook が空の行は、従来の文面(new_article_basic)で告知する
+            tkey = mode
+            if mode == "new_article" and not (row.get("hook") or "").strip():
+                tkey = "new_article_basic"
+            message = build_message(templates, platform, tkey, row)
             image_path = row.get("image_path") or None
             # Instagramは画像が必須。告知用の画像が未設定の行は、汎用のブランド画像で代用する
             if not image_path and platform == "instagram" and TIP_IMAGES:
