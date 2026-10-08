@@ -244,6 +244,7 @@ STORAGE_STATE_PATH = os.environ.get(
 )
 
 COMPOSE_URL = "https://x.com/compose/post"
+PROFILE_URL = "https://x.com/eakensholab"
 
 
 def _dump_diagnostics(page, label: str) -> None:
@@ -493,23 +494,35 @@ def post_to_x(text: str) -> None:
             # 部分)だけを使うようにした。
             verify_snippet = text.strip().split("\n")[0].strip()[:15]
             posted_confirmed = False
+            # 2026-10-08修正: ホームのおすすめ表示では、自分の投稿が先頭に出ない・反映が
+            # 遅いことがあり、実際には投稿済みでも失敗扱い→再実行になっていた。
+            # 確認先を自分のプロフィールに変え、リロードしながら最大5回確認する。
             try:
-                page.goto("https://x.com/home", timeout=20000)
-                page.wait_for_timeout(3000)
-                for _ in range(4):
+                for check in range(1, 6):
+                    page.goto(PROFILE_URL, timeout=20000)
+                    page.wait_for_timeout(4000)
                     if page.locator(f"text={verify_snippet}").count() > 0:
                         posted_confirmed = True
+                        print(f"投稿確認: プロフィールで本文の先頭を確認できました(確認{check}回目)。")
                         break
-                    page.wait_for_timeout(1500)
+                    page.wait_for_timeout(5000)
             except Exception as e:  # noqa: BLE001
-                print("投稿確認(ホームタイムライン確認)に失敗:", e)
+                print("投稿確認(プロフィール確認)に失敗:", e)
 
             if not posted_confirmed:
-                raise RuntimeError(
-                    "投稿完了を確認できませんでした(ホームタイムラインに"
-                    f"本文の先頭「{verify_snippet}」が見つかりません)。"
-                    "実際には投稿されていない可能性があるため、失敗として扱います。"
-                )
+                if button_click_succeeded:
+                    # クリックに成功し、入力欄の文字数も確認済みの場合は、確認だけが
+                    # 失敗しても失敗扱いにしない(再実行による二重投稿を避けるため)。
+                    print(
+                        "警告: プロフィールで本文の先頭を確認できませんでしたが、"
+                        "投稿ボタンのクリックには成功しているため、成功扱いにします。"
+                    )
+                else:
+                    raise RuntimeError(
+                        "投稿完了を確認できませんでした(プロフィールに"
+                        f"本文の先頭「{verify_snippet}」が見つかりません)。"
+                        "投稿ボタンのクリックも失敗しているため、失敗として扱います。"
+                    )
         except Exception:
             _dump_diagnostics(page, "投稿処理中の失敗")
             browser.close()
