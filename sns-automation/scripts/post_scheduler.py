@@ -36,6 +36,8 @@ import json
 import os
 import random
 import sys
+import urllib.error
+import urllib.request
 
 import yaml
 
@@ -128,6 +130,26 @@ def state_key(slot_id, platform):
 
 # ── 新記事告知(posts_queue.csv) ───────────────────────────────
 
+def is_note_published(url):
+    """noteの記事が、誰でも読める状態(公開済み)かを確認する。
+    公開前の下書きのURLは、ログインしていない状態ではアクセスできず404になる。
+    確認できない場合(通信エラーなど)は、安全側に倒して「未公開」として扱い、
+    その回は告知せず、次のスロットで再確認する。
+    """
+    key = url.strip().rstrip("/").split("/")[-1]
+    api = f"https://note.com/api/v3/notes/{key}"
+    req = urllib.request.Request(api, headers={"User-Agent": "Mozilla/5.0 (ea-verification-sns)"})
+    try:
+        with urllib.request.urlopen(req, timeout=15) as res:
+            return res.status == 200
+    except urllib.error.HTTPError as e:
+        print(f"[公開確認] {key}: HTTP {e.code} → 未公開として扱います。")
+        return False
+    except Exception as e:  # noqa: BLE001
+        print(f"[公開確認] {key}: 確認に失敗({type(e).__name__}: {e}) → 未公開として扱います。")
+        return False
+
+
 def load_queue_row(slot_id):
     if not os.path.exists(QUEUE_PATH):
         return None, []
@@ -135,10 +157,13 @@ def load_queue_row(slot_id):
         reader = csv.DictReader(f)
         rows = list(reader)
     for row in rows:
-        if row["slot_id"] == slot_id and row.get("posted", "no") == "no":
+        if row["slot_id"] in (slot_id, "any") and row.get("posted", "no") == "no":
             # note_url が未設定('yyyyyyyy' などの仮置き含む)の行は、告知に使わない
             url = (row.get("note_url") or "").strip()
             if not url or "yyyy" in url:
+                continue
+            # 公開済みの記事だけを告知する(未公開なら、次の行・次のスロットへ)
+            if not is_note_published(url):
                 continue
             return row, rows
     return None, rows
@@ -146,7 +171,7 @@ def load_queue_row(slot_id):
 
 def mark_posted(slot_id, report_no, rows):
     for row in rows:
-        if row["slot_id"] == slot_id and row["report_no"] == report_no:
+        if row["slot_id"] in (slot_id, "any") and row["report_no"] == report_no:
             row["posted"] = "yes"
     fieldnames = list(rows[0].keys())
     with open(QUEUE_PATH, "w", encoding="utf-8", newline="") as f:
@@ -306,6 +331,9 @@ def main():
         else:
             message = build_message(templates, platform, mode, row)
             image_path = row.get("image_path") or None
+            # Instagramは画像が必須。告知用の画像が未設定の行は、汎用のブランド画像で代用する
+            if not image_path and platform == "instagram" and TIP_IMAGES:
+                image_path = TIP_IMAGES[occurrence_index(occ) % len(TIP_IMAGES)]
 
         if image_path:
             image_path = os.path.join(BASE_DIR, image_path)
