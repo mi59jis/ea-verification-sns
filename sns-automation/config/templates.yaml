@@ -9,6 +9,7 @@
 # {trades}       取引数
 # {win_count}    その記事内でPF>=1だった本数
 # {total_count}  その記事の検証本数(通常10)
+# {note_line}    記事の無料部分から取った1行(posts_queue.csv の note_line 列)
 # {hashtags}     ハッシュタグ文字列(スペース区切り)
 #
 # 実際の値は config/posts_queue.csv の該当行から埋め込みます。
@@ -22,7 +23,7 @@ x:
     無料公開中のEAを{total_count}本、実際にバックテストしてみた。
 
     ✅ 黒字は{total_count}本中{win_count}本だけ
-    📉 大きく負けたEAも、隠さず掲載
+    📉 {note_line}
     💰 PF・取引数・最終資産を全部公開
 
     結果はこちら👇
@@ -63,7 +64,7 @@ threads:
     無料公開中のEAを{total_count}本、実際にバックテストしてみた。
 
     ✅ 黒字は{total_count}本中{win_count}本だけ
-    📉 大きく負けたEAも、隠さず掲載
+    📉 {note_line}
     💰 PF・取引数・最終資産を全部公開
 
     結果はこちら👇
@@ -83,7 +84,7 @@ instagram:
     【EA検証 {report_no}】無料公開中のEAを{total_count}本、実際にバックテストしてみた。
 
     ✅黒字は{total_count}本中{win_count}本だけ
-    📉大きく負けたEAも、隠さず掲載
+    📉{note_line}
     💰PF・取引数・最終資産を全部公開
 
     続きはプロフィールのリンクから📎
