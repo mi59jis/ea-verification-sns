@@ -10,6 +10,9 @@
 # {win_count}    その記事内でPF>=1だった本数
 # {total_count}  その記事の検証本数(通常10)
 # {note_line}    記事の無料部分から取った1行(posts_queue.csv の note_line 列)
+# {hook}         告知の1行目(記事ごとの数字入りの一文。posts_queue.csv の hook 列)
+# {bad_line}     告知の最後の1行(悪かった例など。bad_line 列)
+# new_article は hook が入っている行で使い、空の行は new_article_basic(従来の文面)を使う
 # {hashtags}     ハッシュタグ文字列(スペース区切り)
 #
 # 実際の値は config/posts_queue.csv の該当行から埋め込みます。
@@ -19,6 +22,19 @@ hashtags_extra: "#バックテスト #システムトレード #資産運用 #�
 
 x:
   new_article: |
+    【EA検証 {report_no}】
+    {hook}
+
+    ✅ 黒字は{total_count}本中{win_count}本だけ
+    📉 {note_line}
+    {bad_line}
+
+    結果はこちら👇
+    {note_url}
+
+    {hashtags_core}
+
+  new_article_basic: |
     【EA検証 {report_no}】
     無料公開中のEAを{total_count}本、実際にバックテストしてみた。
 
@@ -61,6 +77,19 @@ x:
 threads:
   new_article: |
     【EA検証 {report_no}】
+    {hook}
+
+    ✅ 黒字は{total_count}本中{win_count}本だけ
+    📉 {note_line}
+    {bad_line}
+
+    結果はこちら👇
+    {note_url}
+
+    {hashtags_core}
+
+  new_article_basic: |
+    【EA検証 {report_no}】
     無料公開中のEAを{total_count}本、実際にバックテストしてみた。
 
     ✅ 黒字は{total_count}本中{win_count}本だけ
@@ -81,6 +110,16 @@ instagram:
     {hashtags_core} {hashtags_extra}
 
   new_article: |
+    【EA検証 {report_no}】{hook}
+
+    ✅黒字は{total_count}本中{win_count}本だけ
+    📉{note_line}
+    {bad_line}
+
+    続きはプロフィールのリンクから📎
+    {hashtags_core} {hashtags_extra}
+
+  new_article_basic: |
     【EA検証 {report_no}】無料公開中のEAを{total_count}本、実際にバックテストしてみた。
 
     ✅黒字は{total_count}本中{win_count}本だけ
