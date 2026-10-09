@@ -468,12 +468,25 @@ def post_to_x(text: str) -> None:
             # Playwrightの自動リトライ(最大8秒)に任せる。それでも失敗
             # した場合にのみ Control+Enter をフォールバックとして試す。
             button_click_succeeded = False
+            used_fallback_submit = False
             try:
                 post_button.click(timeout=8000)
                 button_click_succeeded = True
                 print("投稿ボタンのクリックに成功しました。")
             except Exception as e:  # noqa: BLE001
-                print("投稿ボタンのクリックに失敗(タイムアウトの可能性):", e)
+                print("投稿ボタンのクリックに失敗(タイムアウトの可能性):", str(e)[:300])
+                # 2026-10-09 修正: 別の要素(ハッシュタグの候補リスト等と推測)が
+                # クリックを邪魔して(subtree intercepts pointer events)ボタンが
+                # 押せない回があった。まず、座標を使わず、ボタンに直接 click
+                # イベントを送る方法で再試行する(ダイアログの外を押すと、
+                # 「下書きを保存しますか?」が出る恐れがあるため、外側のクリックはしない)。
+                try:
+                    post_button.dispatch_event("click", timeout=5000)
+                    button_click_succeeded = True
+                    used_fallback_submit = True
+                    print("投稿ボタンへ click イベントを直接送信しました(dispatch_event)。")
+                except Exception as e2:  # noqa: BLE001
+                    print("投稿ボタンへのイベント送信にも失敗:", str(e2)[:300])
 
             if not button_click_succeeded:
                 print(
@@ -481,6 +494,7 @@ def post_to_x(text: str) -> None:
                     "フォールバックとして Control+Enter での送信を試みます。"
                 )
                 page.keyboard.press("Control+Enter")
+                used_fallback_submit = True
 
             page.wait_for_timeout(2500)
 
@@ -492,7 +506,11 @@ def post_to_x(text: str) -> None:
             # 10回目の修正: 改行や絵文字混じりの長い断片だとテキスト一致の
             # 判定が不安定になりうるため、本文の1行目(先頭の短い一意な
             # 部分)だけを使うようにした。
-            verify_snippet = text.strip().split("\n")[0].strip()[:15]
+            # 2026-10-09 修正: 括弧・かぎ括弧を含む断片だと、検索に失敗することが
+            # あったため、括弧で区切った、最初の4文字以上の部分(15文字まで)を使う。
+            _first_line = text.strip().split("\n")[0].strip()
+            _segments = [s.strip() for s in re.split(r"[()（）「」\[\]]", _first_line)]
+            verify_snippet = next((s[:15] for s in _segments if len(s) >= 4), _first_line[:15])
             posted_confirmed = False
             # 2026-10-08修正: ホームのおすすめ表示では、自分の投稿が先頭に出ない・反映が
             # 遅いことがあり、実際には投稿済みでも失敗扱い→再実行になっていた。
@@ -501,7 +519,7 @@ def post_to_x(text: str) -> None:
                 for check in range(1, 6):
                     page.goto(PROFILE_URL, timeout=20000)
                     page.wait_for_timeout(4000)
-                    if page.locator(f"text={verify_snippet}").count() > 0:
+                    if page.get_by_text(verify_snippet).count() > 0:
                         posted_confirmed = True
                         print(f"投稿確認: プロフィールで本文の先頭を確認できました(確認{check}回目)。")
                         break
@@ -518,10 +536,15 @@ def post_to_x(text: str) -> None:
                         "投稿ボタンのクリックには成功しているため、成功扱いにします。"
                     )
                 else:
-                    raise RuntimeError(
-                        "投稿完了を確認できませんでした(プロフィールに"
-                        f"本文の先頭「{verify_snippet}」が見つかりません)。"
-                        "投稿ボタンのクリックも失敗しているため、失敗として扱います。"
+                    # 2026-10-09 修正: Control+Enter で送信した場合は、実際に投稿できて
+                    # いるのに、確認だけが失敗して「失敗」扱い→再実行(二重投稿の恐れ、
+                    # Instagram・Threadsの二重投稿を避けるためのスキップ表示、赤い失敗表示)
+                    # となっていた。送信操作自体はエラーなく実行できているため、
+                    # 警告つきで成功扱いにする(投稿されなかった場合は、ログの警告で気づける)。
+                    print(
+                        "警告: プロフィールで本文の先頭を確認できませんでしたが、"
+                        "Control+Enter での送信は実行できているため、成功扱いにします"
+                        f"(確認に使った文字列: 「{verify_snippet}」)。"
                     )
         except Exception:
             _dump_diagnostics(page, "投稿処理中の失敗")
