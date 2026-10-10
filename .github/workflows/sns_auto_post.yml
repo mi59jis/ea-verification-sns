@@ -9,6 +9,9 @@ on:
     - cron: "35 21 * * *"
     - cron: "5 9 * * *"
     - cron: "35 9 * * *"
+    # MT4編の告知枠(config/mt4_posts.csv)。月水金の 8:00 と 13:00 JST 頃
+    - cron: "5 23 * * 0,2,4"
+    - cron: "5 4 * * 1,3,5"
   workflow_dispatch:      # 手動実行・DRY_RUNでのテスト用
     inputs:
       dry_run:

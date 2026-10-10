@@ -282,6 +282,20 @@ def post_one(platform, message, image_path):
 
 
 def main():
+    # MT4編の告知(決めた日時に投稿する専用の枠)。ここで何が起きても、下の通常の投稿は続ける
+    mt4_failures = []
+    try:
+        import mt4_dated_posts
+        mt4_failures = mt4_dated_posts.run(
+            now_jst(), os.environ.get("DRY_RUN", "false").lower() == "true", is_note_published, post_one)
+    except Exception as e:  # noqa: BLE001
+        print(f"[MT4] 告知処理でエラー: {type(e).__name__}: {e}")
+        mt4_failures = ["mt4"]
+    rc = main_slots()
+    return 1 if (rc or mt4_failures) else 0
+
+
+def main_slots():
     schedule = load_yaml(SCHEDULE_PATH)
     templates = load_yaml(TEMPLATES_PATH)
     now = now_jst()
