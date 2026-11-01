@@ -320,7 +320,7 @@ def _shrink_text_for_x(text: str, limit: int = _X_CHAR_LIMIT) -> str:
     return (text + "…") if text else text
 
 
-def post_to_x(text: str) -> None:
+def post_to_x(text: str, image_path: str = None) -> None:
     # 12回目の修正: Xの文字数カウント(絵文字・全角=2、URL=23換算)で
     # 上限280文字を超えている場合、投稿ボタンが永久にdisabledのまま
     # になる(見た目上は本文が正しく入力欄に反映されていても送信できない)
@@ -449,6 +449,20 @@ def post_to_x(text: str) -> None:
                     f"元の文字数: {len(text)})。3回リトライしても改善しなかった"
                     "ため、投稿を中止します。"
                 )
+
+            # 2026-11-01 追加: 画像の指定があるとき(MT4の告知の行だけ)は、本文の入力後に添付する。
+            # 添付に失敗しても、本文だけで投稿を続ける(告知そのものは止めない)。
+            if image_path and os.path.exists(image_path):
+                try:
+                    file_input = scope.locator('input[data-testid="fileInput"]')
+                    if file_input.count() == 0:
+                        file_input = page.locator('input[data-testid="fileInput"]')
+                    file_input.first.set_input_files(image_path)
+                    scope.locator('[data-testid="attachments"]').first.wait_for(state="visible", timeout=20000)
+                    page.wait_for_timeout(1500)
+                    print(f"画像を添付しました: {image_path}")
+                except Exception as e:  # noqa: BLE001
+                    print("画像の添付に失敗したため、本文だけで投稿します:", str(e)[:300])
 
             # 認証チャレンジ・電話番号確認などが出ていないか軽くチェック
             if page.locator("text=confirm your identity").count() > 0 or page.locator(

@@ -268,7 +268,7 @@ def build_random_message(templates, platform, occ):
 def post_one(platform, message, image_path):
     if platform == "x":
         from x_poster import post_to_x
-        post_to_x(message)
+        post_to_x(message, image_path)
     elif platform == "instagram":
         from ig_poster import post_to_instagram
         if not image_path:
@@ -276,7 +276,7 @@ def post_one(platform, message, image_path):
         post_to_instagram(message, image_path)
     elif platform == "threads":
         from threads_poster import post_to_threads
-        post_to_threads(message)
+        post_to_threads(message, image_path)
     else:
         raise RuntimeError(f"未対応のプラットフォームです: {platform}")
 
@@ -354,6 +354,9 @@ def main_slots():
             if not image_path and platform == "instagram" and TIP_IMAGES:
                 image_path = TIP_IMAGES[occurrence_index(occ) % len(TIP_IMAGES)]
 
+        # 通常の枠は、これまでどおり画像をつけるのはInstagramだけ(X・Threadsの画像はMT4の告知の行で指定したときだけ)
+        if platform != "instagram":
+            image_path = None
         if image_path:
             image_path = os.path.join(BASE_DIR, image_path)
 

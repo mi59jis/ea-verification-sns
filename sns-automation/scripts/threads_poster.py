@@ -33,7 +33,7 @@ GRAPH_API_BASE = f"https://graph.threads.net/{GRAPH_API_VERSION}"
 MAX_CHARS = 500
 
 
-def post_to_threads(text: str, max_wait_seconds: int = 60) -> None:
+def post_to_threads(text: str, image_local_path: str = None, max_wait_seconds: int = 60) -> None:
     access_token = os.environ["THREADS_ACCESS_TOKEN"]
     user_id = os.environ["THREADS_USER_ID"]
 
@@ -43,16 +43,13 @@ def post_to_threads(text: str, max_wait_seconds: int = 60) -> None:
             "テンプレートを短くしてください。"
         )
 
-    # 1. テキストコンテナを作成
-    create_resp = requests.post(
-        f"{GRAPH_API_BASE}/{user_id}/threads",
-        data={
-            "media_type": "TEXT",
-            "text": text,
-            "access_token": access_token,
-        },
-        timeout=30,
-    )
+    # 1. コンテナを作成(画像があれば画像つき。画像は Instagram と同じく公開URLで渡す)
+    data = {"media_type": "TEXT", "text": text, "access_token": access_token}
+    if image_local_path:
+        from ig_poster import _public_image_url
+        data.update(media_type="IMAGE", image_url=_public_image_url(image_local_path))
+        print(f"公開画像URL: {data['image_url']}")
+    create_resp = requests.post(f"{GRAPH_API_BASE}/{user_id}/threads", data=data, timeout=30)
     if create_resp.status_code >= 400:
         print(f"APIエラー応答本文: {create_resp.text}")
 
@@ -60,8 +57,23 @@ def post_to_threads(text: str, max_wait_seconds: int = 60) -> None:
     creation_id = create_resp.json()["id"]
     print(f"Threadsコンテナ作成完了: {creation_id}")
 
-    # 2. 処理完了を軽く待つ(テキストのみなので通常は一瞬)
+    # 2. 処理完了を待つ(テキストのみなら一瞬。画像つきは取り込みが終わるまで待つ)
     time.sleep(3)
+    waited = 3
+    while image_local_path and waited < max_wait_seconds:
+        status_resp = requests.get(
+            f"{GRAPH_API_BASE}/{creation_id}",
+            params={"fields": "status", "access_token": access_token},
+            timeout=30,
+        )
+        status_resp.raise_for_status()
+        status = status_resp.json().get("status", "FINISHED")
+        if status == "FINISHED":
+            break
+        if status in ("ERROR", "EXPIRED"):
+            raise RuntimeError(f"Threadsの画像の取り込みに失敗しました(status={status})")
+        time.sleep(3)
+        waited += 3
 
     # 3. 公開
     publish_resp = requests.post(
