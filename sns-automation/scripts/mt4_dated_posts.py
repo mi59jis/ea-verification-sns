@@ -5,8 +5,8 @@ mt4_dated_posts.py — MT4編の記事の告知を、決めた日時に投稿す
 config/mt4_posts.csv の行(1行 = 1つの記事 × 1つのSNS)を見て、
   - 予定時刻(due)を過ぎていて、status=pending の行を対象にする
   - noteの記事が公開済みのときだけ投稿する(未公開なら投稿せず pending のまま。次の実行で再確認)
-  - 予定時刻から48時間たっても公開されなかった行は status=skipped にして、それ以上は告知しない
-    (= noteの公開が間に合わなくても、何も壊れない・未公開の記事を告知することもない)
+  - 公開が予定より遅れても取りやめない。公開された次の実行で告知する(2026-11-03 変更)
+  - 期限のある告知(EXPIRING の行。お試し価格など)だけは、予定時刻から24時間たったら status=skipped にする
   - 1回の実行で、1つのSNSにつき1件まで(遅れて公開した記事がまとめて流れないように)
 
 post_scheduler.py の main() から、通常のスロット処理とは別に毎回呼ばれる。
@@ -24,7 +24,8 @@ import os
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 MT4_PATH = os.path.join(BASE_DIR, "config", "mt4_posts.csv")
 ENABLED_PATH = os.path.join(BASE_DIR, "config", "mt4_posts_enabled.txt")
-GRACE_HOURS = 48
+EXPIRING = ("re_mt4_01",)  # 文面に期限が入っている告知のid
+GRACE_HOURS = 24
 JST = datetime.timezone(datetime.timedelta(hours=9))
 
 
@@ -67,8 +68,8 @@ def run(now, dry_run, is_note_published, post_one):
         due = datetime.datetime.fromisoformat(row["due"]).replace(tzinfo=JST)
         if due > now:
             continue
-        if now - due > datetime.timedelta(hours=GRACE_HOURS):
-            print(f"[MT4] {row['id']}: 予定から{GRACE_HOURS}時間たっても公開されなかったため、告知をやめます。")
+        if row["id"].startswith(EXPIRING) and now - due > datetime.timedelta(hours=GRACE_HOURS):
+            print(f"[MT4] {row['id']}: 予定から{GRACE_HOURS}時間たったため、期限のある告知をやめます。")
             row["status"] = "skipped"
             changed = True
             continue
