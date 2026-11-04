@@ -8,6 +8,7 @@ config/mt4_posts.csv の行(1行 = 1つの記事 × 1つのSNS)を見て、
   - 公開が予定より遅れても取りやめない。公開された次の実行で告知する(2026-11-03 変更)
   - 記事の告知(ON_PUBLISH の行)は、予定の日より早く公開されたときも、予定の日を待たずに告知する(2026-11-04 変更)
   - 期限のある告知(EXPIRING の行。お試し価格など)だけは、予定時刻から24時間たったら status=skipped にする
+  - 夜23時〜朝7時(JST)の実行では告知を出さない(2026-11-04 追加)
   - 1回の実行で、1つのSNSにつき1件まで(遅れて公開した記事がまとめて流れないように)
 
 post_scheduler.py の main() から、通常のスロット処理とは別に毎回呼ばれる。
@@ -28,6 +29,7 @@ ENABLED_PATH = os.path.join(BASE_DIR, "config", "mt4_posts_enabled.txt")
 ON_PUBLISH = ("article_mt4_", "guide_mt4_")  # 予定の日を待たず、公開されたら告知する記事のid
 EXPIRING = ("re_mt4_01",)  # 文面に期限が入っている告知のid
 GRACE_HOURS = 24
+QUIET_FROM, QUIET_UNTIL = 23, 7  # この時間帯(JST)は告知を出さず、次の実行に回す
 JST = datetime.timezone(datetime.timedelta(hours=9))
 
 
@@ -59,6 +61,9 @@ def run(now, dry_run, is_note_published, post_one):
     if not enabled():
         print("[MT4] mt4_posts_enabled.txt が true ではないため、MT4の告知は内容の表示だけで、投稿しません。")
         dry_run = True
+    if now.hour >= QUIET_FROM or now.hour < QUIET_UNTIL:
+        print(f"[MT4] {now:%H:%M} は夜中のため告知を出しません({QUIET_UNTIL}時以降の実行に回します)。")
+        return []
     rows, fields = _load()
     if not rows:
         return []
