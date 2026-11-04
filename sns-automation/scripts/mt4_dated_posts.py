@@ -6,6 +6,7 @@ config/mt4_posts.csv の行(1行 = 1つの記事 × 1つのSNS)を見て、
   - 予定時刻(due)を過ぎていて、status=pending の行を対象にする
   - noteの記事が公開済みのときだけ投稿する(未公開なら投稿せず pending のまま。次の実行で再確認)
   - 公開が予定より遅れても取りやめない。公開された次の実行で告知する(2026-11-03 変更)
+  - 記事の告知(ON_PUBLISH の行)は、予定の日より早く公開されたときも、予定の日を待たずに告知する(2026-11-04 変更)
   - 期限のある告知(EXPIRING の行。お試し価格など)だけは、予定時刻から24時間たったら status=skipped にする
   - 1回の実行で、1つのSNSにつき1件まで(遅れて公開した記事がまとめて流れないように)
 
@@ -24,6 +25,7 @@ import os
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 MT4_PATH = os.path.join(BASE_DIR, "config", "mt4_posts.csv")
 ENABLED_PATH = os.path.join(BASE_DIR, "config", "mt4_posts_enabled.txt")
+ON_PUBLISH = ("article_mt4_", "guide_mt4_")  # 予定の日を待たず、公開されたら告知する記事のid
 EXPIRING = ("re_mt4_01",)  # 文面に期限が入っている告知のid
 GRACE_HOURS = 24
 JST = datetime.timezone(datetime.timedelta(hours=9))
@@ -66,7 +68,7 @@ def run(now, dry_run, is_note_published, post_one):
         if row.get("status", "pending") != "pending":
             continue
         due = datetime.datetime.fromisoformat(row["due"]).replace(tzinfo=JST)
-        if due > now:
+        if due > now and not row["id"].startswith(ON_PUBLISH):
             continue
         if row["id"].startswith(EXPIRING) and now - due > datetime.timedelta(hours=GRACE_HOURS):
             print(f"[MT4] {row['id']}: 予定から{GRACE_HOURS}時間たったため、期限のある告知をやめます。")
