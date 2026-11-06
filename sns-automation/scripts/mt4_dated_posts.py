@@ -9,6 +9,7 @@ config/mt4_posts.csv の行(1行 = 1つの記事 × 1つのSNS)を見て、
   - 記事の告知(ON_PUBLISH の行)は、予定の日より早く公開されたときも、予定の日を待たずに告知する(2026-11-04 変更)
   - 期限のある告知(EXPIRING の行。お試し価格など)だけは、予定時刻から24時間たったら status=skipped にする
   - 夜23時〜朝7時(JST)の実行では告知を出さない(2026-11-04 追加)
+  - 投稿の直前に禁止語(BANNED)を確かめ、見つかったら直してから投稿する。直せなければ status=held にして出さない(2026-11-06 追加)
   - 1回の実行で、1つのSNSにつき1件まで(遅れて公開した記事がまとめて流れないように)
 
 post_scheduler.py の main() から、通常のスロット処理とは別に毎回呼ばれる。
@@ -30,6 +31,23 @@ ON_PUBLISH = ("article_mt4_", "guide_mt4_", "free_n")  # 予定の日を待た�
 EXPIRING = ("re_mt4_01",)  # 文面に期限が入っている告知のid
 GRACE_HOURS = 24
 QUIET_FROM, QUIET_UNTIL = 23, 7  # この時間帯(JST)は告知を出さず、次の実行に回す
+# 告知に使わない言葉(記事の生成と同じ一覧 + 「必ず」)。投稿の直前に確かめる(2026-11-06 追加)
+BANNED = ["おすすめ", "推奨", "優秀", "最強", "必勝", "稼げる", "安全", "危険", "詐欺", "買うべき", "避けるべき", "合格", "不合格", "必ず"]
+# 1行目(題名の行)に入っていた場合の言い換え
+REWORD = {"おすすめしません": "控えたほうがよいです", "おすすめ": "よく使われる", "危険": "注意が必要", "安全": "心配ない", "必ず": "いつも"}
+
+
+def clean_text(text):
+    """禁止語を取り除いた文面を返す。直せないときは None(投稿しない)。
+    1行目以外で禁止語を含む行は、その行ごと外す。1行目は言い換える。"""
+    lines = text.split("\n")
+    out = [lines[0]] + [ln for ln in lines[1:] if not any(w in ln for w in BANNED)]
+    for a, b in REWORD.items():
+        out[0] = out[0].replace(a, b)
+    fixed = "\n".join(out)
+    if any(w in fixed for w in BANNED) or "{note_url}" not in fixed:
+        return None
+    return fixed
 JST = datetime.timezone(datetime.timedelta(hours=9))
 
 
@@ -89,7 +107,18 @@ def run(now, dry_run, is_note_published, post_one):
         if not published_cache[url]:
             print(f"[MT4] {row['id']}: noteがまだ公開されていないため、今回は告知しません(次の実行で再確認)。")
             continue
-        message = row["text"].replace("{note_url}", url).strip()
+        text = row["text"]
+        if any(w in text for w in BANNED):
+            fixed = clean_text(text)
+            if fixed is None:
+                print(f"[MT4] {row['id']}: 禁止語 {[w for w in BANNED if w in text]} を直せないため、投稿しません(status=held)。")
+                row["status"] = "held"
+                changed = True
+                failures.append(f"mt4-banned-{row['id']}")
+                continue
+            print(f"[MT4] {row['id']}: 禁止語 {[w for w in BANNED if w in text]} があったため、直してから投稿します。")
+            text = fixed
+        message = text.replace("{note_url}", url).strip()
         image = os.path.join(BASE_DIR, row["image"]) if row.get("image") else None
         print(f"--- [MT4] {platform} 投稿本文({row['id']}) ---\n{message}\n---------------------")
         if dry_run:
