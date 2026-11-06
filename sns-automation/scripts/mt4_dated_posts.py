@@ -26,7 +26,7 @@ import os
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 MT4_PATH = os.path.join(BASE_DIR, "config", "mt4_posts.csv")
 ENABLED_PATH = os.path.join(BASE_DIR, "config", "mt4_posts_enabled.txt")
-ON_PUBLISH = ("article_mt4_", "guide_mt4_")  # 予定の日を待たず、公開されたら告知する記事のid
+ON_PUBLISH = ("article_mt4_", "guide_mt4_", "free_n")  # 予定の日を待たず、公開されたら告知する記事のid
 EXPIRING = ("re_mt4_01",)  # 文面に期限が入っている告知のid
 GRACE_HOURS = 24
 QUIET_FROM, QUIET_UNTIL = 23, 7  # この時間帯(JST)は告知を出さず、次の実行に回す
