@@ -37,15 +37,16 @@ BANNED = ["おすすめ", "推奨", "優秀", "最強", "必勝", "稼げる", "
 REWORD = {"おすすめしません": "控えたほうがよいです", "おすすめ": "よく使われる", "危険": "注意が必要", "安全": "心配ない", "必ず": "いつも"}
 
 
-def clean_text(text):
+def clean_text(text, need_url=True):
     """禁止語を取り除いた文面を返す。直せないときは None(投稿しない)。
-    1行目以外で禁止語を含む行は、その行ごと外す。1行目は言い換える。"""
+    1行目以外で禁止語を含む行は、その行ごと外す。1行目は言い換える。
+    need_url=True のときは、{note_url} の行が残っていることも確かめる(通常の枠はURLが入った後の文面なので False)。"""
     lines = text.split("\n")
     out = [lines[0]] + [ln for ln in lines[1:] if not any(w in ln for w in BANNED)]
     for a, b in REWORD.items():
         out[0] = out[0].replace(a, b)
     fixed = "\n".join(out)
-    if any(w in fixed for w in BANNED) or "{note_url}" not in fixed:
+    if any(w in fixed for w in BANNED) or (need_url and "{note_url}" not in fixed):
         return None
     return fixed
 JST = datetime.timezone(datetime.timedelta(hours=9))

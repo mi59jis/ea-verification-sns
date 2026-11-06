@@ -360,6 +360,18 @@ def main_slots():
         if image_path:
             image_path = os.path.join(BASE_DIR, image_path)
 
+        # 2026-11-06 追加: 投稿の直前に禁止語を確かめる(MT4の告知と同じ一覧・同じ直し方)
+        import mt4_dated_posts as banned_check
+        hit = [w for w in banned_check.BANNED if w in message]
+        if hit:
+            fixed = banned_check.clean_text(message, need_url=False)
+            if fixed is None:
+                print(f"[{platform}] 禁止語 {hit} を直せないため、投稿しません。")
+                failures.append(f"{platform}-banned")
+                continue
+            print(f"[{platform}] 禁止語 {hit} があったため、直してから投稿します。")
+            message = fixed
+
         print(f"--- {platform} 投稿本文 ---\n{message}\n---------------------")
 
         if dry_run:
