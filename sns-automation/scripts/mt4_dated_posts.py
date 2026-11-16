@@ -104,7 +104,8 @@ def run(now, dry_run, is_note_published, post_one):
             continue
         url = row["note_url"]
         if url not in published_cache:
-            published_cache[url] = is_note_published(url)
+            # マガジン(/m/)は記事の公開確認の仕組みでは確かめられないので、公開済みのものだけを予定に入れる前提で確認しない
+            published_cache[url] = True if "/m/" in url else is_note_published(url)
         if not published_cache[url]:
             print(f"[MT4] {row['id']}: noteがまだ公開されていないため、今回は告知しません(次の実行で再確認)。")
             continue
